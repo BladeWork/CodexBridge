@@ -68,6 +68,7 @@ interface BridgeCoordinatorLike {
       onApprovalRequest?: ((request: ProviderApprovalRequest) => Promise<void>) | null;
     },
   ): Promise<RuntimeResponse>;
+  cleanupInternalProviderThreads?(params?: { dryRun?: boolean; limit?: number }): Promise<unknown>;
 }
 
 interface StreamState {
@@ -122,6 +123,7 @@ interface WeixinBridgeRuntimeOptions {
   typingKeepaliveMs?: number;
   inboundAttachmentMergeWindowMs?: number;
   automationPollMs?: number;
+  internalThreadCleanupMs?: number;
   locale?: string | null;
 }
 
@@ -170,6 +172,12 @@ export class WeixinBridgeRuntime {
 
   automationSweepInFlight: Promise<void> | null;
 
+  internalThreadCleanupMs: number;
+
+  internalThreadCleanupTimer: ReturnType<typeof setInterval> | null;
+
+  internalThreadCleanupInFlight: Promise<void> | null;
+
   constructor({
     platformPlugin,
     bridgeCoordinator,
@@ -183,6 +191,7 @@ export class WeixinBridgeRuntime {
     typingKeepaliveMs = WeixinBridgeRuntime.DEFAULT_TYPING_KEEPALIVE_MS,
     inboundAttachmentMergeWindowMs = 3000,
     automationPollMs = 30_000,
+    internalThreadCleanupMs = 24 * 60 * 60 * 1000,
     locale = null,
   }) {
     this.platformPlugin = platformPlugin;
@@ -197,6 +206,7 @@ export class WeixinBridgeRuntime {
     this.typingKeepaliveMs = typingKeepaliveMs;
     this.inboundAttachmentMergeWindowMs = inboundAttachmentMergeWindowMs;
     this.automationPollMs = automationPollMs;
+    this.internalThreadCleanupMs = internalThreadCleanupMs;
     this.i18n = createI18n(locale);
     this.poller = null;
     this.backgroundTasks = new Set();
@@ -206,6 +216,8 @@ export class WeixinBridgeRuntime {
     this.recentScopeNotices = new Map();
     this.automationSweepTimer = null;
     this.automationSweepInFlight = null;
+    this.internalThreadCleanupTimer = null;
+    this.internalThreadCleanupInFlight = null;
   }
 
   async start(): Promise<void> {
@@ -213,6 +225,7 @@ export class WeixinBridgeRuntime {
     this.automationJobs?.resetRunningJobs?.();
     this.agentJobs?.resetRunningJobs?.();
     this.startAutomationScheduler();
+    this.startInternalThreadCleanupScheduler();
     this.poller = new WeixinPoller({
       plugin: this.platformPlugin,
       onEvent: async (event) => this.dispatchInboundEvent(event),
@@ -227,6 +240,7 @@ export class WeixinBridgeRuntime {
     this.poller?.stop();
     this.poller = null;
     this.stopAutomationScheduler();
+    this.stopInternalThreadCleanupScheduler();
     await this.flushAllPendingInboundMerges();
     await this.waitForIdle();
     await this.platformPlugin.stop();
@@ -1203,6 +1217,46 @@ export class WeixinBridgeRuntime {
     }
     clearInterval(this.automationSweepTimer);
     this.automationSweepTimer = null;
+  }
+
+  startInternalThreadCleanupScheduler(): void {
+    if (this.internalThreadCleanupMs <= 0 || typeof this.bridgeCoordinator.cleanupInternalProviderThreads !== 'function') {
+      return;
+    }
+    this.stopInternalThreadCleanupScheduler();
+    void this.runInternalThreadCleanup();
+    this.internalThreadCleanupTimer = setInterval(() => {
+      void this.runInternalThreadCleanup();
+    }, this.internalThreadCleanupMs);
+  }
+
+  stopInternalThreadCleanupScheduler(): void {
+    if (!this.internalThreadCleanupTimer) {
+      return;
+    }
+    clearInterval(this.internalThreadCleanupTimer);
+    this.internalThreadCleanupTimer = null;
+  }
+
+  async runInternalThreadCleanup(): Promise<void> {
+    if (typeof this.bridgeCoordinator.cleanupInternalProviderThreads !== 'function') {
+      return;
+    }
+    if (this.internalThreadCleanupInFlight) {
+      return this.internalThreadCleanupInFlight;
+    }
+    const task = this.bridgeCoordinator.cleanupInternalProviderThreads({ dryRun: false })
+      .then(() => undefined)
+      .catch(async (error) => {
+        await this.onError(error);
+      })
+      .finally(() => {
+        if (this.internalThreadCleanupInFlight === task) {
+          this.internalThreadCleanupInFlight = null;
+        }
+      });
+    this.internalThreadCleanupInFlight = task;
+    return task;
   }
 
   async runAutomationSweep(): Promise<void> {

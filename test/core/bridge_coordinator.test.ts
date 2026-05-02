@@ -8,6 +8,7 @@ import {
   AGENT_COMMAND_SKILL_ACTIONS,
   INSTRUCTIONS_COMMAND_SKILL_ACTIONS,
   REVIEW_COMMAND_SKILL_ACTIONS,
+  THREAD_COMMAND_SKILL_ACTIONS,
 } from '../../src/core/bridge_coordinator.js';
 import { createCodexBridgeRuntime } from '../../src/runtime/bootstrap.js';
 
@@ -38,6 +39,8 @@ class FakeProviderPlugin {
   startMcpServerOauthLoginCalls: any[];
   reloadMcpServersCalls: any[];
   setSkillEnabledCalls: any[];
+  archiveThreadCalls: any[];
+  unarchiveThreadCalls: any[];
   usageReport: any;
   skillEntries: any[];
   skillErrors: any[];
@@ -51,6 +54,7 @@ class FakeProviderPlugin {
   baseTime: number;
   clock: number;
   threads: Map<any, any>;
+  archivedThreadIds: Set<any>;
 
   constructor(kind: string, options: { replyPrefix?: string; models?: any[] } = {}) {
     const { replyPrefix = '', models = null } = options;
@@ -149,6 +153,8 @@ class FakeProviderPlugin {
     this.startMcpServerOauthLoginCalls = [];
     this.reloadMcpServersCalls = [];
     this.setSkillEnabledCalls = [];
+    this.archiveThreadCalls = [];
+    this.unarchiveThreadCalls = [];
     this.usageReport = null;
     this.skillEntries = [];
     this.skillErrors = [];
@@ -166,6 +172,7 @@ class FakeProviderPlugin {
     this.baseTime = Date.now();
     this.clock = 0;
     this.threads = new Map();
+    this.archivedThreadIds = new Set();
   }
 
   nextUpdatedAt() {
@@ -173,9 +180,9 @@ class FakeProviderPlugin {
     return this.baseTime + this.clock;
   }
 
-  async startThread({ providerProfile, cwd, title, metadata }) {
+  async startThread({ providerProfile, cwd, title, metadata, ephemeral = null }) {
     this.threadCounter += 1;
-    this.startThreadCalls.push({ providerProfile, cwd, title, metadata });
+    this.startThreadCalls.push({ providerProfile, cwd, title, metadata, ephemeral });
     const thread = {
       threadId: `${providerProfile.id}-thread-${this.threadCounter}`,
       cwd: cwd ?? `/tmp/${providerProfile.id}`,
@@ -199,10 +206,13 @@ class FakeProviderPlugin {
     };
   }
 
-  async listThreads({ limit = 20, cursor = null, searchTerm = null } = {}) {
+  async listThreads({ limit = 20, cursor = null, searchTerm = null, archived = false } = {}) {
     const offset = cursor ? Number(cursor) : 0;
     const normalizedSearch = String(searchTerm ?? '').trim().toLowerCase();
     const filtered = [...this.threads.values()]
+      .filter((thread) => archived
+        ? this.archivedThreadIds.has(thread.threadId)
+        : !this.archivedThreadIds.has(thread.threadId))
       .filter((thread) => {
         if (!normalizedSearch) {
           return true;
@@ -238,6 +248,22 @@ class FakeProviderPlugin {
       return restored;
     }
     return this.threads.get(threadId) ?? null;
+  }
+
+  async archiveThread({ threadId }) {
+    this.archiveThreadCalls.push({ threadId });
+    if (!this.threads.has(threadId)) {
+      throw new Error(`thread not found: ${threadId}`);
+    }
+    this.archivedThreadIds.add(threadId);
+  }
+
+  async unarchiveThread({ threadId }) {
+    this.unarchiveThreadCalls.push({ threadId });
+    if (!this.threads.has(threadId)) {
+      throw new Error(`thread not found: ${threadId}`);
+    }
+    this.archivedThreadIds.delete(threadId);
   }
 
   async startTurn({ providerProfile, bridgeSession, sessionSettings, event, inputText, onTurnStarted = null }) {
@@ -2025,10 +2051,10 @@ test('/helps lists all supported slash commands and help entrypoints', async () 
   assert.match(text, /\/models \(\/ms\) 列出当前 provider 的可用模型/);
   assert.match(text, /\/model \(\/m\) 查看或切换当前 scope 的模型设置/);
   assert.match(text, /\/personality \(\/psn\) 查看或切换当前会话的 personality/);
-  assert.match(text, /\/instructions \(\/ins\) 查看或编辑全局自定义指令/);
+  assert.match(text, /\/instructions \(\/ins\) 查看、起草或确认全局自定义指令/);
   assert.match(text, /\/fast 开启或关闭 Fast 模式/);
-  assert.match(text, /\/threads \(\/th\) 查看当前 provider 的线程列表首页/);
-  assert.match(text, /\/search \(\/se\) 按关键词搜索线程标题或 preview/);
+  assert.match(text, /\/threads \(\/th\) 线程命令统一入口：查看列表，并支持自然语言搜索、打开、预览、改名和批量管理/);
+  assert.match(text, /\/search \(\/se\) 用自然语言搜索相关线程，并显示候选列表/);
   assert.match(text, /\/next \(\/nx\) 翻到当前线程列表的下一页/);
   assert.match(text, /\/prev \(\/pv\) 翻到当前线程列表的上一页/);
   assert.match(text, /\/rename \(\/rn\) 给线程设置本地显示名/);
@@ -2069,7 +2095,7 @@ test('/helps renders English help text when locale is set to en', async () => {
   assert.match(text, /\/models \(\/ms\) List available models for the current provider/);
   assert.match(text, /\/model \(\/m\) View or switch model settings for the current scope/);
   assert.match(text, /\/personality \(\/psn\) View or switch the active session personality/);
-  assert.match(text, /\/instructions \(\/ins\) View or edit the global custom instructions/);
+  assert.match(text, /\/instructions \(\/ins\) View, draft, or confirm the global custom instructions/);
   assert.match(text, /\/fast Enable or disable Fast mode/);
   assert.match(text, /\/lang Show or switch the current language used for text replies/);
   assert.match(text, /\/lang Show or switch the current language used for text replies\n⭐️ \/ Local keepalive pulse: when the bot is about to send roughly 10 consecutive messages on its own/u);
@@ -4117,12 +4143,14 @@ test('/models lists available models for the current provider', async () => {
     text: '/models',
   });
 
-  assert.match(result.messages[0]?.text ?? '', /可用模型：openai-default/);
-  assert.match(result.messages[1]?.text ?? '', /当前模型：默认/);
-  assert.match(result.messages[2]?.text ?? '', /模型列表：/);
-  assert.match(result.messages[3]?.text ?? '', /- gpt-5.4/);
-  assert.match(result.messages[4]?.text ?? '', /- gpt-5.2-codex/);
-  assert.match(result.messages[3]?.text ?? '', /最新 frontier/);
+  const text = result.messages.map((message) => message.text ?? '').join('\n');
+  assert.match(text, /可用模型：openai-default/);
+  assert.match(text, /当前生效模型：gpt-5.4/);
+  assert.match(text, /模型来源：provider 默认/);
+  assert.match(text, /模型列表：/);
+  assert.match(text, /- gpt-5\.4 .*（当前）.*（默认）/);
+  assert.match(text, /- gpt-5.2-codex/);
+  assert.match(text, /最新 frontier/);
 });
 
 test('/model shows current model and updates model setting for the next turn', async () => {
@@ -4133,7 +4161,15 @@ test('/model shows current model and updates model setting for the next turn', a
     externalScopeId: 'wx-user-model-1',
     text: '/model',
   });
-  assert.match(empty.messages[0]?.text ?? '', /当前模型：默认/);
+  const emptyText = empty.messages.map((message) => message.text ?? '').join('\n');
+  assert.match(emptyText, /当前 provider：openai-default/);
+  assert.match(emptyText, /当前生效模型：gpt-5.4/);
+  assert.match(emptyText, /模型来源：provider 默认/);
+  assert.match(emptyText, /模型说明：最新 frontier/);
+  assert.match(emptyText, /当前生效思考深度：medium/);
+  assert.match(emptyText, /思考深度来源：模型默认/);
+  assert.match(emptyText, /模型默认思考深度：medium/);
+  assert.match(emptyText, /支持思考深度：low, medium, high, xhigh/);
 
   await runtime.services.bridgeCoordinator.handleInboundEvent({
     platform: 'weixin',
@@ -4155,6 +4191,17 @@ test('/model shows current model and updates model setting for the next turn', a
     text: 'next turn',
   });
   assert.equal(openai.startTurnCalls.at(-1)?.sessionSettings?.model, 'gpt-5.2-codex');
+
+  const current = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-user-model-1',
+    text: '/model',
+  });
+  const currentText = current.messages.map((message) => message.text ?? '').join('\n');
+  assert.match(currentText, /当前生效模型：gpt-5.2-codex/);
+  assert.match(currentText, /模型来源：当前会话显式设置/);
+  assert.match(currentText, /当前生效思考深度：medium/);
+  assert.match(currentText, /思考深度来源：模型默认/);
 });
 
 test('/model sets reasoning effort for the current/default model', async () => {
@@ -4543,18 +4590,25 @@ test('/helps threads renders usage, examples, and notes for a specific command',
 
   const text = result.messages[0]?.text ?? '';
   assert.match(text, /命令：\/threads/);
-  assert.match(text, /说明：查看当前 provider 的线程列表首页/);
+  assert.match(text, /说明：线程命令统一入口：查看列表，并支持自然语言搜索、打开、预览、改名和批量管理/);
   assert.match(text, /用法：/);
   assert.match(text, /\/threads$/m);
+  assert.match(text, /\/th 打开昨天那个发票线程/);
   assert.match(text, /\/th all/);
   assert.match(text, /\/th pin/);
   assert.match(text, /\/th del 2/);
+  assert.match(text, /\/th del 发票相关旧线程/);
   assert.match(text, /\/th restore 2/);
+  assert.match(text, /\/th restore 刚刚归档的发票线程/);
   assert.match(text, /\/th pin 2/);
+  assert.match(text, /\/th pin DailyWork 相关线程/);
   assert.match(text, /\/th unpin 2/);
+  assert.match(text, /\/th confirm/);
+  assert.match(text, /\/th cancel/);
   assert.match(text, /\/th -h/);
   assert.match(text, /\/open 2/);
-  assert.match(text, /默认列表会把置顶线程排在前面/);
+  assert.match(text, /\/th 把那个线程改名为微信桥接排障/);
+  assert.match(text, /现在既是线程列表命令，也是这整组线程子命令的自然语言统一入口/);
 });
 
 test('/helps help entry explains the local keepalive slash pulse', async () => {
@@ -4567,9 +4621,10 @@ test('/helps help entry explains the local keepalive slash pulse', async () => {
   });
 
   const text = result.messages[0]?.text ?? '';
-  assert.match(text, /主动单独发送 \/ 作为本地 keepalive/);
+  assert.match(text, /主动单独发送裸 \/ 作为本地 keepalive/);
   assert.match(text, /不会转发给 Codex/);
   assert.match(text, /不会触发回复/);
+  assert.match(text, /像 \/retry 这样的命令仍按正常命令处理/);
 });
 
 test('/use without enough arguments returns the full use help page', async () => {
@@ -4600,11 +4655,17 @@ test('slash commands support first-argument help flags like -h', async () => {
   const text = result.messages[0]?.text ?? '';
   assert.match(text, /命令：\/threads/);
   assert.match(text, /\/threads$/m);
+  assert.match(text, /\/th 打开昨天那个发票线程/);
   assert.match(text, /\/th pin/);
   assert.match(text, /\/th del 2/);
+  assert.match(text, /\/th del 发票相关旧线程/);
   assert.match(text, /\/th restore 2/);
+  assert.match(text, /\/th restore 刚刚归档的发票线程/);
   assert.match(text, /\/th pin 2/);
+  assert.match(text, /\/th pin DailyWork 相关线程/);
   assert.match(text, /\/th unpin 2/);
+  assert.match(text, /\/th confirm/);
+  assert.match(text, /\/th cancel/);
   assert.match(text, /\/th -h/);
   assert.match(text, /\/peek 2/);
 });
@@ -5474,6 +5535,135 @@ test('/search filters the thread browser by preview or title', async () => {
   assert.doesNotMatch(result.messages[0]?.text ?? '', /beta followup/);
 });
 
+test('/search natural language uses the thread command skill for semantic candidate selection', async () => {
+  const { runtime, openai } = makeRuntime();
+
+  const invoiceThread = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-search-skill-invoice',
+    text: '丹达第四期发票提交跟进',
+  });
+  await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-search-skill-build',
+    text: '构建日志排查',
+  });
+
+  const originalStartTurn = openai.startTurn.bind(openai);
+  openai.startTurn = async (params: any) => {
+    const parserInput = normalizeCommandSkillInput(params?.inputText);
+    if (parserInput.includes('docs/command-skills/threads.md') && parserInput.includes('"command": "search"')) {
+      assert.deepEqual(params?.event?.metadata?.codexbridge?.developerPromptContext, {
+        mode: 'command-skill-parser',
+        title: 'Thread Command Skill',
+        source: 'thread-command-skill',
+        command: 'search',
+        subcommand: 'search',
+        operation: 'search',
+      });
+      assert.match(parserInput, /"supportedActions": \[/);
+      assert.match(parserInput, /"threadId": "openai-default-thread-1"/);
+      return {
+        outputText: JSON.stringify({
+          schemaVersion: 'codexbridge.thread-command-skill.v1',
+          ok: true,
+          action: 'search_threads',
+          confidence: 0.94,
+          requiresConfirmation: false,
+          summary: '找到最相关的发票线程。',
+          candidateThreadIds: [invoiceThread.session?.codexThreadId],
+        }),
+      };
+    }
+    return originalStartTurn(params);
+  };
+
+  const result = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-search-skill-browser',
+    text: '/search 找昨天那个发票线程',
+  });
+
+  const text = result.messages[0]?.text ?? '';
+  assert.match(text, /搜索：找昨天那个发票线程/);
+  assert.match(text, /丹达第四期发票提交跟进/);
+  assert.doesNotMatch(text, /构建日志排查/);
+  assert.ok(openai.startThreadCalls.some((call: any) =>
+    call.title === 'Thread Command Skill' && call.ephemeral === true));
+});
+
+test('/threads natural language can route to local open and rename actions through the thread command skill', async () => {
+  const { runtime, openai } = makeRuntime();
+
+  const target = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-thread-natural-open-target',
+    text: '昨天的发票线程',
+  });
+
+  const originalStartTurn = openai.startTurn.bind(openai);
+  let renameInvocationCount = 0;
+  openai.startTurn = async (params: any) => {
+    const parserInput = normalizeCommandSkillInput(params?.inputText);
+    if (parserInput.includes('docs/command-skills/threads.md') && parserInput.includes('"subcommand": "natural"')) {
+      if (parserInput.includes('打开昨天那个发票线程')) {
+        return {
+          outputText: JSON.stringify({
+            schemaVersion: 'codexbridge.thread-command-skill.v1',
+            ok: true,
+            action: 'open_thread',
+            confidence: 0.95,
+            requiresConfirmation: false,
+            summary: '打开昨天那个发票线程。',
+            candidateThreadIds: [target.session?.codexThreadId],
+          }),
+        };
+      }
+      if (parserInput.includes('改名为微信桥接排障')) {
+        renameInvocationCount += 1;
+        return {
+          outputText: JSON.stringify({
+            schemaVersion: 'codexbridge.thread-command-skill.v1',
+            ok: true,
+            action: 'rename_thread',
+            confidence: 0.93,
+            requiresConfirmation: false,
+            summary: '把目标线程改名为微信桥接排障。',
+            newName: '微信桥接排障',
+            candidateThreadIds: [target.session?.codexThreadId],
+          }),
+        };
+      }
+    }
+    return originalStartTurn(params);
+  };
+
+  const opened = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-thread-natural-browser',
+    text: '/threads 打开昨天那个发票线程',
+  });
+  assert.equal(opened.session?.codexThreadId, target.session?.codexThreadId);
+  assert.match(opened.messages[0]?.text ?? '', /已打开 Codex 线程/);
+
+  const renamed = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-thread-natural-browser',
+    text: '/threads 把那个线程改名为微信桥接排障',
+  });
+  const renamedText = renamed.messages[0]?.text ?? '';
+  assert.equal(renameInvocationCount, 1);
+  assert.match(renamedText, /已更新线程显示名/);
+  assert.match(renamedText, /名称：微信桥接排障/);
+
+  const threadsView = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-thread-natural-browser',
+    text: '/threads',
+  });
+  assert.match(threadsView.messages[0]?.text ?? '', /微信桥接排障/);
+});
+
 test('/weibo returns the requested hot-search top list', async () => {
   const { runtime } = makeRuntime({
     weiboHotSearch: {
@@ -5592,7 +5782,7 @@ test('/rename updates the local thread alias used by /threads', async () => {
 });
 
 test('/threads del archives a thread from the default list, and /threads restore revives it from the all view', async () => {
-  const { runtime } = makeRuntime();
+  const { runtime, openai } = makeRuntime();
 
   const older = await runtime.services.bridgeCoordinator.handleInboundEvent({
     platform: 'weixin',
@@ -5618,6 +5808,7 @@ test('/threads del archives a thread from the default list, and /threads restore
     text: '/threads del 1',
   });
   assert.match(archived.messages[0]?.text ?? '', new RegExp(`已归档线程：${newer.session?.codexThreadId}`));
+  assert.deepEqual(openai.archiveThreadCalls, [{ threadId: newer.session?.codexThreadId }]);
 
   const hiddenFromDefault = await runtime.services.bridgeCoordinator.handleInboundEvent({
     platform: 'weixin',
@@ -5643,6 +5834,7 @@ test('/threads del archives a thread from the default list, and /threads restore
     text: '/threads restore 1',
   });
   assert.match(restored.messages[0]?.text ?? '', new RegExp(`已恢复线程：${newer.session?.codexThreadId}`));
+  assert.deepEqual(openai.unarchiveThreadCalls, [{ threadId: newer.session?.codexThreadId }]);
 
   const visibleAgain = await runtime.services.bridgeCoordinator.handleInboundEvent({
     platform: 'weixin',
@@ -5801,6 +5993,153 @@ test('/threads pin and /threads unpin keep pinned threads at the top and support
   const pinnedAfterText = pinnedViewAfterUnpin.messages[0]?.text ?? '';
   assert.doesNotMatch(pinnedAfterText, /OpenAI Default thread 2 \[置顶\]/);
   assert.match(pinnedAfterText, /OpenAI Default thread 1 \[置顶\]/);
+});
+
+test('/threads del natural language creates a pending batch draft and /threads confirm applies it', async () => {
+  const { runtime, openai } = makeRuntime();
+
+  const invoiceOne = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-thread-skill-archive-1',
+    text: '丹达第四期发票提交',
+  });
+  const invoiceTwo = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-thread-skill-archive-2',
+    text: '发票补充资料整理',
+  });
+  await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-thread-skill-archive-3',
+    text: '构建回归排查',
+  });
+
+  const originalStartTurn = openai.startTurn.bind(openai);
+  openai.startTurn = async (params: any) => {
+    const parserInput = normalizeCommandSkillInput(params?.inputText);
+    if (parserInput.includes('docs/command-skills/threads.md') && parserInput.includes('"command": "threads"')) {
+      assert.deepEqual(params?.event?.metadata?.codexbridge?.developerPromptContext, {
+        mode: 'command-skill-parser',
+        title: 'Thread Command Skill',
+        source: 'thread-command-skill',
+        command: 'threads',
+        subcommand: 'archive',
+        operation: 'archive',
+      });
+      return {
+        outputText: JSON.stringify({
+          schemaVersion: 'codexbridge.thread-command-skill.v1',
+          ok: true,
+          action: 'propose_archive_threads',
+          confidence: 0.92,
+          requiresConfirmation: true,
+          summary: '归档发票相关旧线程。',
+          reason: '这些线程都与发票跟进有关。',
+          candidateThreadIds: [
+            invoiceOne.session?.codexThreadId,
+            invoiceTwo.session?.codexThreadId,
+          ],
+        }),
+      };
+    }
+    return originalStartTurn(params);
+  };
+
+  const draft = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-thread-skill-browser',
+    text: '/threads del 把发票相关旧线程归档',
+  });
+  const draftText = draft.messages.map((message) => message.text ?? '').join('\n');
+  assert.match(draftText, /线程批量操作待确认/);
+  assert.match(draftText, /动作：归档线程/);
+  assert.match(draftText, /摘要：归档发票相关旧线程/);
+  assert.match(draftText, /丹达第四期发票提交/);
+  assert.match(draftText, /发票补充资料整理/);
+  assert.match(draftText, /确认：\/threads confirm/);
+  assert.match(draftText, /取消：\/threads cancel/);
+
+  const confirmed = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-thread-skill-browser',
+    text: '/threads confirm',
+  });
+  const confirmedText = confirmed.messages.map((message) => message.text ?? '').join('\n');
+  assert.match(confirmedText, new RegExp(`已归档线程：${invoiceOne.session?.codexThreadId}`));
+  assert.match(confirmedText, new RegExp(`已归档线程：${invoiceTwo.session?.codexThreadId}`));
+  assert.deepEqual(openai.archiveThreadCalls.map((call: any) => call.threadId).sort(), [
+    invoiceOne.session?.codexThreadId,
+    invoiceTwo.session?.codexThreadId,
+  ].sort());
+
+  const defaultView = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-thread-skill-browser',
+    text: '/threads',
+  });
+  const defaultText = defaultView.messages[0]?.text ?? '';
+  assert.doesNotMatch(defaultText, /丹达第四期发票提交/);
+  assert.doesNotMatch(defaultText, /发票补充资料整理/);
+  assert.match(defaultText, /构建回归排查/);
+
+  const allView = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-thread-skill-browser',
+    text: '/threads all',
+  });
+  const allText = allView.messages[0]?.text ?? '';
+  assert.match(allText, /视图：全部（含已归档）/);
+  assert.match(allText, /OpenAI Default thread 1 \[已归档\]/);
+  assert.match(allText, /OpenAI Default thread 2 \[已归档\]/);
+});
+
+test('/threads cancel clears a pending natural-language batch draft', async () => {
+  const { runtime, openai } = makeRuntime();
+
+  const pinnedCandidate = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-thread-skill-pin-1',
+    text: 'DailyWork 周报整理',
+  });
+
+  const originalStartTurn = openai.startTurn.bind(openai);
+  openai.startTurn = async (params: any) => {
+    const parserInput = normalizeCommandSkillInput(params?.inputText);
+    if (parserInput.includes('docs/command-skills/threads.md') && parserInput.includes('"subcommand": "pin"')) {
+      return {
+        outputText: JSON.stringify({
+          schemaVersion: 'codexbridge.thread-command-skill.v1',
+          ok: true,
+          action: 'propose_pin_threads',
+          confidence: 0.9,
+          requiresConfirmation: true,
+          summary: '置顶 DailyWork 相关线程。',
+          reason: '它是当前反复查看的工作线程。',
+          candidateThreadIds: [pinnedCandidate.session?.codexThreadId],
+        }),
+      };
+    }
+    return originalStartTurn(params);
+  };
+
+  await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-thread-skill-pin-browser',
+    text: '/threads pin DailyWork 相关线程',
+  });
+  const cancelled = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-thread-skill-pin-browser',
+    text: '/threads cancel',
+  });
+  assert.match(cancelled.messages[0]?.text ?? '', /已取消当前线程批量操作草案/);
+
+  const confirmAfterCancel = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-thread-skill-pin-browser',
+    text: '/threads confirm',
+  });
+  assert.match(confirmAfterCancel.messages[0]?.text ?? '', /当前没有待确认的线程批量操作/);
 });
 
 test('/peek shows recent conversation turns for the selected thread', async () => {
@@ -10034,5 +10373,27 @@ test('INSTRUCTIONS_COMMAND_SKILL_ACTIONS matches actions declared in docs/comman
     missingInDoc,
     [],
     `Actions in INSTRUCTIONS_COMMAND_SKILL_ACTIONS but missing from instructions.md: ${missingInDoc.join(', ')}`,
+  );
+});
+
+test('THREAD_COMMAND_SKILL_ACTIONS matches actions declared in docs/command-skills/threads.md', () => {
+  const docPath = path.resolve('docs/command-skills/threads.md');
+  const markdown = fs.readFileSync(docPath, 'utf-8');
+  const docActions = extractMarkdownTableActions(markdown);
+
+  assert.ok(docActions.size > 0, 'should extract at least one action from threads.md action table');
+
+  const missingInCode = [...docActions].filter((a) => !THREAD_COMMAND_SKILL_ACTIONS.has(a as any));
+  const missingInDoc = [...THREAD_COMMAND_SKILL_ACTIONS].filter((a) => !docActions.has(a));
+
+  assert.deepEqual(
+    missingInCode,
+    [],
+    `Actions declared in threads.md but missing from THREAD_COMMAND_SKILL_ACTIONS: ${missingInCode.join(', ')}`,
+  );
+  assert.deepEqual(
+    missingInDoc,
+    [],
+    `Actions in THREAD_COMMAND_SKILL_ACTIONS but missing from threads.md: ${missingInDoc.join(', ')}`,
   );
 });

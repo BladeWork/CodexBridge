@@ -12,6 +12,7 @@
     "weixin:login": "tsx src/cli.ts weixin login",
     "weixin:clear-context": "tsx src/cli.ts weixin clear-context",
     "weixin:serve": "tsx src/cli.ts weixin serve",
+    "codex:cleanup-internal-threads": "tsx src/cli.ts codex cleanup-internal-threads",
     "test": "node ./scripts/test.mjs",
     "test:live-agent": "node --input-type=module -e \"process.env.CODEXBRIDGE_TEST_ALLOW_LIVE_AGENT='1'; await import('./scripts/test.mjs');\" test/live_agent/live_agent_smoke.test.ts"
   },

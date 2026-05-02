@@ -107,7 +107,7 @@ It borrows the most useful CLI help conventions while staying chat-friendly:
 /personality
 /psn pragmatic
 /instructions
-/instructions edit
+/instructions 以后回答更简短一点，并默认用中文回复微信文本消息。
 /permissions
 /perm
 /allow
@@ -143,12 +143,12 @@ Use a single `/` proactively before the bot reaches roughly 10 consecutive repli
 - it is not forwarded to Codex
 - it does not create a new reply, task, or record
 - its purpose is to let the user proactively break the WeChat-side consecutive bot-message throttle
+- only a bare single `/` counts as this pulse; commands like `/retry` keep their normal command meaning
 
 Example:
 
 ```text
 /
-/retry
 ```
 
 ### `/status`, `/where`, and `/st`
@@ -268,7 +268,7 @@ CODEXBRIDGE_AGENT_API=chat_completions
 
 Save personal assistant records from WeChat.
 
-- `/as <text>` is the unified natural-language entry. Codex first decides whether the text is a new record or a management action on an existing record, then classifies new records as log, todo, reminder, or note.
+- `/as <text>` is the unified natural-language entry for this whole assistant-record group. Codex first decides whether the text should create a new record or manage an existing one. New records are routed to `log`, `todo`, `reminder`, or `note`; existing-record requests are routed to the matching record type and action such as update, complete, cancel, or archive.
 - `/log <text>` forces a log record.
 - `/todo <text>` forces a todo record. Use `/todo done 1` to complete it.
 - `/remind <text>` forces a reminder. Phrases such as `明天上午10点` and `每周一早上9点` are parsed locally.
@@ -348,7 +348,7 @@ Notes:
 
 ### `/skills` and `/sk`
 
-List the skills currently visible to Codex for the active session cwd, search for related skills, inspect what a skill is for, and enable or disable it.
+Use `/skills` as the management and inspection surface for skills visible to Codex under the active session cwd. The normal way to use a skill is still to tell Codex in natural language which skill to use for which task.
 
 - `/skills` shows the current visible skills
 - `/skills search <keyword>` performs a broad relevance match over the visible skills
@@ -356,6 +356,7 @@ List the skills currently visible to Codex for the active session cwd, search fo
 - `/skills on <index|name>` enables the selected skill
 - `/skills off <index|name>` disables the selected skill
 - `/skills reload` forces a fresh re-scan for the current cwd
+- for actual work, directly say things like `use assistant-checkin skill to review my records` in natural language; `/skills` itself is mainly for browsing and management
 
 Examples:
 
@@ -402,9 +403,13 @@ Examples:
 
 Create and manage scheduled background jobs. Results are always delivered back to the same WeChat chat.
 
-- `/auto add ...` uses natural language first:
-  - Codex turns the request into one or more schedule drafts
-  - `/auto confirm` persists the job or jobs
+- `/auto <text>` is a natural-language routing entry for this automation group:
+  - Codex decides whether the request is creating, editing, deleting, or otherwise managing an automation job
+  - matching changes still go through a confirmation draft first
+- `/auto add <text>` forces create-draft mode from natural language
+- `/auto edit <text>` refines the current pending draft from natural language
+- Codex can turn natural language into one or more schedule drafts
+- `/auto confirm` persists the job or jobs
 - default mode is `standalone`
 - `thread` mode reuses the current bound session and requires an existing scope session
 - `daily` and `cron` schedules are interpreted in `UTC`
@@ -459,6 +464,10 @@ Examples:
 
 List available models for the current provider profile.
 
+- shows the current effective model before the list
+- marks the current effective model directly in the list
+- keeps provider-default markers where the provider exposes them
+
 Examples:
 
 ```text
@@ -468,7 +477,14 @@ Examples:
 
 ### `/model` and `/m`
 
-View the current model setting or switch it for the current scope.
+View the current effective model configuration or switch it for the current scope.
+
+- `/model` shows the current provider, effective model, model source, effective reasoning effort, effort source, and supported effort range
+- `/model <effort>` updates only the reasoning effort for the current effective model
+- `/model <modelId>` updates the model for future turns
+- `/model <modelId> <effort>` updates both together
+- `/model default` resets model and reasoning effort back to provider defaults for the session
+- changes are session-scoped and take effect on the next turn
 
 Examples:
 
@@ -498,20 +514,26 @@ Examples:
 
 View or edit the global Codex custom instructions file backed by `AGENTS.md`.
 
-- `/instructions` shows the current file path and content status
-- `/instructions set <text>` replaces `AGENTS.md` inline
-- `/instructions edit` arms the next non-command message as the new file content
-- `/instructions clear` removes the current custom instructions
-- `/instructions cancel` exits pending edit mode
+- `/instructions` shows the current file path, content status, and any pending draft
+- `/instructions <natural language>` asks Codex to draft an `AGENTS.md` change from natural language
+- `/instructions set <text>` stages a full replacement draft inline
+- `/instructions edit` arms the next non-command message as the full replacement draft content
+- `/instructions edit <change request>` asks Codex to revise the current pending draft
+- `/instructions clear` stages a clear draft instead of removing content immediately
+- `/instructions ok` confirms the pending draft, writes `AGENTS.md`, and refreshes Codex sessions
+- `/instructions cancel` discards the pending draft or exits pending edit-capture mode
 
 Examples:
 
 ```text
 /instructions
 /ins
+/instructions 以后回答更简短一点，并默认用中文回复微信文本消息。
 /instructions set Always explain the tradeoffs before editing.
 /instructions edit
+/instructions edit 把附件规则删掉，但保留工程规范。
 /instructions clear
+/instructions ok
 /instructions cancel
 ```
 
@@ -539,22 +561,45 @@ Each page is rendered as WeChat-friendly text with:
 - relative update time
 - suggested follow-up commands
 
+`/threads del|restore|pin|unpin` supports two modes:
+
+- explicit indexes or thread ids for deterministic local execution
+- natural language for AI-selected batch targets, which always returns a pending draft first and then requires `/threads confirm`
+
+`/threads <natural language>` can also route to the rest of the thread command group, including:
+
+- open a thread
+- preview a thread
+- rename a thread
+- switch between default / all / pinned views
+- search or batch-manage related threads
+
 Examples:
 
 ```text
 /threads
+/threads 打开昨天那个发票线程
+/threads 先看一下 DailyWork 周报那个线程
+/threads 把那个线程改名为微信桥接排障
+/threads del 2 3
+/threads del 把旧版登录排障线程归档
+/threads pin DailyWork 相关线程
+/threads confirm
+/threads cancel
 /threads -h
 /th
 ```
 
-### `/search <term>` and `/se <term>`
+### `/search <text>` and `/se <text>`
 
-Search thread titles and previews, then show the first page of results.
+Search for relevant threads in natural language.
+Bridge sends the current provider thread directory to Codex for semantic selection, then returns a WeChat-friendly candidate list.
 
 Examples:
 
 ```text
 /search bridge
+/search 找昨天那个发票线程
 /se bridge
 /search 微信
 /se 微信
@@ -768,7 +813,7 @@ For day-to-day use on WeChat:
 5. Use `/stop` if the current reply needs to be interrupted
 6. Use `/permissions` when you need to inspect or change the next-turn access preset
 7. Use `/personality` to keep the session tone aligned with how you want Codex to respond
-8. Use `/instructions` when you want to update your global custom instructions without leaving WeChat
+8. Use `/instructions` when you want to draft, confirm, or revise your global custom instructions without leaving WeChat
 9. Use `/allow` to approve and `/deny` to reject when Codex asks for approval during the current turn
 10. Use `/retry` after an interrupted turn; use `/reconnect` only when you want to refresh the session without rerunning the previous request
 

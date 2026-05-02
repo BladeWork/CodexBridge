@@ -15,6 +15,7 @@ interface RuntimeHarnessOptions {
   typingKeepaliveMs?: number;
   inboundAttachmentMergeWindowMs?: number;
   automationPollMs?: number;
+  internalThreadCleanupMs?: number;
   pollEvents?: any[];
 }
 
@@ -30,6 +31,7 @@ function makeRuntime({
   typingKeepaliveMs = 8000,
   inboundAttachmentMergeWindowMs = 3000,
   automationPollMs = 30_000,
+  internalThreadCleanupMs = 0,
   pollEvents = null,
 }: RuntimeHarnessOptions) {
   return new WeixinBridgeRuntime({
@@ -81,6 +83,7 @@ function makeRuntime({
     typingKeepaliveMs,
     inboundAttachmentMergeWindowMs,
     automationPollMs,
+    internalThreadCleanupMs,
   });
 }
 
@@ -138,6 +141,34 @@ test('WeixinBridgeRuntime forwards poll events into the bridge coordinator and s
     { externalScopeId: 'wxid_1', status: 'stop' },
   ]);
   assert.deepEqual(committed, ['cursor-1']);
+});
+
+test('WeixinBridgeRuntime runs internal thread cleanup as a single in-flight task', async () => {
+  let resolveCleanup: (() => void) | null = null;
+  let cleanupCalls = 0;
+  const runtime = makeRuntime({
+    sendText: async () => {},
+    coordinator: {
+      async cleanupInternalProviderThreads() {
+        cleanupCalls += 1;
+        await new Promise<void>((resolve) => {
+          resolveCleanup = resolve;
+        });
+      },
+    },
+  });
+
+  const firstRun = runtime.runInternalThreadCleanup();
+  const secondRun = runtime.runInternalThreadCleanup();
+  assert.equal(cleanupCalls, 1);
+  resolveCleanup?.();
+  await Promise.all([firstRun, secondRun]);
+  assert.equal(cleanupCalls, 1);
+
+  const thirdRun = runtime.runInternalThreadCleanup();
+  assert.equal(cleanupCalls, 2);
+  resolveCleanup?.();
+  await thirdRun;
 });
 
 test('WeixinBridgeRuntime keeps sending typing notifications while a long-running turn is still processing', async () => {

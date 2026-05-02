@@ -11,6 +11,7 @@ import {
   flushPendingRestartNotifications,
   materializeQrArtifact,
   pendingRestartNotificationsFile,
+  parseCodexCleanupInternalThreadsArgs,
   parseWeixinClearContextArgs,
   parseWeixinLoginArgs,
   parseWeixinServeArgs,
@@ -89,6 +90,29 @@ test('parseWeixinClearContextArgs reads state-dir and account-id flags', () => {
 
   assert.equal(parsed.stateDir, '/tmp/codexbridge-state');
   assert.equal(parsed.accountId, 'bot-account');
+});
+
+test('parseCodexCleanupInternalThreadsArgs defaults to dry-run and reads apply flags', () => {
+  assert.deepEqual(parseCodexCleanupInternalThreadsArgs([]), {
+    stateDir: null,
+    cwd: null,
+    dryRun: true,
+    limit: 100_000,
+  });
+
+  assert.deepEqual(parseCodexCleanupInternalThreadsArgs([
+    '--state-dir', '/tmp/codexbridge-state',
+    '--cwd', '/tmp/project',
+    '--limit', '250',
+    '--apply',
+  ]), {
+    stateDir: '/tmp/codexbridge-state',
+    cwd: '/tmp/project',
+    dryRun: false,
+    limit: 250,
+  });
+
+  assert.equal(parseCodexCleanupInternalThreadsArgs(['--apply', '--dry-run']).dryRun, true);
 });
 
 test('resolveClearContextAccountId infers the only saved account', () => {

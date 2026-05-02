@@ -35,6 +35,13 @@ interface WeixinClearContextArgs {
   accountId: string | null;
 }
 
+interface CodexCleanupInternalThreadsArgs {
+  stateDir: string | null;
+  cwd: string | null;
+  dryRun: boolean;
+  limit: number;
+}
+
 interface ServeLockPayload {
   pid: number;
   startedAt: string;
@@ -63,6 +70,9 @@ async function main(argv: string[] = process.argv.slice(2)) {
   }
   if (group === 'weixin' && command === 'clear-context') {
     return runWeixinClearContext(args);
+  }
+  if (group === 'codex' && command === 'cleanup-internal-threads') {
+    return runCodexCleanupInternalThreads(args);
   }
   printUsage();
   process.exitCode = 1;
@@ -240,6 +250,87 @@ async function runWeixinServe(args: string[]) {
   }
 }
 
+async function runCodexCleanupInternalThreads(args: string[]) {
+  const i18n = createI18n();
+  const options = parseCodexCleanupInternalThreadsArgs(args);
+  const stateDir = path.resolve(options.stateDir ?? defaultCodexBridgeStateDir());
+  const defaultCwd = path.resolve(options.cwd ?? process.env.CODEXBRIDGE_DEFAULT_CWD ?? process.cwd());
+  const repositories = createFileJsonRepositories(path.join(stateDir, 'runtime'));
+  const codexProfiles = loadCodexProfilesFromEnv();
+  const runtime = createCodexBridgeRuntime({
+    providerPlugins: [
+      new OpenAINativeProviderPlugin(),
+      new MiniMaxViaCLIProxyProviderPlugin(),
+    ],
+    providerProfiles: codexProfiles.profiles,
+    defaultProviderProfileId: codexProfiles.defaultProviderProfileId,
+    defaultCwd,
+    locale: i18n.locale,
+    repositories,
+    assistantAttachmentRoot: path.join(stateDir, 'assistant', 'attachments'),
+    codexAuthManager: createWeixinServeCodexAuthManager(stateDir),
+  });
+
+  process.stdout.write(`${i18n.t('cli.cleanupInternalThreads.starting')}\n`);
+  process.stdout.write(`mode: ${options.dryRun ? 'dry-run' : 'apply'}\n`);
+  process.stdout.write(`state_dir: ${stateDir}\n`);
+  process.stdout.write(`default_cwd: ${defaultCwd}\n`);
+  process.stdout.write(`limit: ${options.limit}\n`);
+
+  try {
+    const reports = await runtime.services.bridgeCoordinator.cleanupInternalProviderThreads({
+      dryRun: options.dryRun,
+      limit: options.limit,
+    });
+    let totalScanned = 0;
+    let totalMatched = 0;
+    let totalArchived = 0;
+    let totalFailed = 0;
+
+    for (const report of reports) {
+      const failed = Array.isArray(report.failed) ? report.failed : [];
+      const matches = Array.isArray(report.matches) ? report.matches : [];
+      totalScanned += Number(report.scanned ?? 0);
+      totalMatched += Number(report.matched ?? 0);
+      totalArchived += Number(report.archived ?? 0);
+      totalFailed += failed.length;
+      process.stdout.write(`\nprofile: ${report.providerProfileId}\n`);
+      process.stdout.write(`scanned: ${Number(report.scanned ?? 0)}\n`);
+      process.stdout.write(`matched: ${Number(report.matched ?? 0)}\n`);
+      process.stdout.write(`archived: ${Number(report.archived ?? 0)}\n`);
+      if (matches.length > 0) {
+        process.stdout.write('matches:\n');
+        for (const match of matches.slice(0, 20)) {
+          process.stdout.write(`  - ${match.threadId} ${match.title ?? ''}\n`);
+        }
+        if (matches.length > 20) {
+          process.stdout.write(`  ... ${matches.length - 20} more\n`);
+        }
+      }
+      if (failed.length > 0) {
+        process.stdout.write('failed:\n');
+        for (const item of failed) {
+          process.stdout.write(`  - ${item.threadId || '(profile)'} ${item.error}\n`);
+        }
+      }
+    }
+
+    process.stdout.write('\nsummary:\n');
+    process.stdout.write(`scanned: ${totalScanned}\n`);
+    process.stdout.write(`matched: ${totalMatched}\n`);
+    process.stdout.write(`archived: ${totalArchived}\n`);
+    process.stdout.write(`failed: ${totalFailed}\n`);
+    if (options.dryRun) {
+      process.stdout.write(`${i18n.t('cli.cleanupInternalThreads.dryRunHint')}\n`);
+    }
+    if (totalFailed > 0) {
+      process.exitCode = 1;
+    }
+  } finally {
+    await stopRuntimeProviderPlugins(runtime.registry.listProviders());
+  }
+}
+
 function parseWeixinLoginArgs(args: string[]): WeixinLoginArgs {
   const options: WeixinLoginArgs = {
     baseUrl: null,
@@ -314,6 +405,45 @@ function parseWeixinClearContextArgs(args: string[]): WeixinClearContextArgs {
     if (arg === '--account-id' && next) {
       options.accountId = next;
       index += 1;
+    }
+  }
+  return options;
+}
+
+function parseCodexCleanupInternalThreadsArgs(args: string[]): CodexCleanupInternalThreadsArgs {
+  const options: CodexCleanupInternalThreadsArgs = {
+    stateDir: null,
+    cwd: null,
+    dryRun: true,
+    limit: 100_000,
+  };
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    const next = args[index + 1];
+    if (arg === '--state-dir' && next) {
+      options.stateDir = next;
+      index += 1;
+      continue;
+    }
+    if (arg === '--cwd' && next) {
+      options.cwd = next;
+      index += 1;
+      continue;
+    }
+    if (arg === '--limit' && next) {
+      const limit = Number.parseInt(next, 10);
+      if (Number.isFinite(limit) && limit > 0) {
+        options.limit = limit;
+      }
+      index += 1;
+      continue;
+    }
+    if (arg === '--apply') {
+      options.dryRun = false;
+      continue;
+    }
+    if (arg === '--dry-run') {
+      options.dryRun = true;
     }
   }
   return options;
@@ -615,6 +745,7 @@ function printUsage() {
     createI18n().t('cli.usage.login'),
     createI18n().t('cli.usage.clearContext'),
     createI18n().t('cli.usage.serve'),
+    createI18n().t('cli.usage.cleanupInternalThreads'),
   ].join('\n'));
 }
 
@@ -641,6 +772,10 @@ function createWeixinServeCodexAuthManager(stateDir: string) {
   });
 }
 
+async function stopRuntimeProviderPlugins(providerPlugins: any[]) {
+  await Promise.allSettled(providerPlugins.map((plugin) => plugin?.stop?.()));
+}
+
 function formatError(error: unknown) {
   if (error instanceof Error) {
     return error.stack || error.message;
@@ -662,6 +797,7 @@ export {
   codexLoginStateDir,
   createWeixinServeCodexAuthManager,
   pendingRestartNotificationsFile,
+  parseCodexCleanupInternalThreadsArgs,
   parseWeixinClearContextArgs,
   parseWeixinLoginArgs,
   parseWeixinServeArgs,
