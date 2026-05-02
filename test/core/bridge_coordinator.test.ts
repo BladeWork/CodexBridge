@@ -5711,6 +5711,9 @@ test('/open binds the scope to an existing provider thread', async () => {
   });
 
   assert.match(result.messages[0]?.text ?? '', new RegExp(`已打开 Codex 线程 ${original.session?.codexThreadId}`));
+  assert.match(result.messages[3]?.text ?? '', /线程预览：/);
+  assert.match(result.messages[3]?.text ?? '', /最近 1 轮：/);
+  assert.match(result.messages[3]?.text ?? '', /你：hello from telegram/);
   assert.equal(result.session?.codexThreadId, original.session?.codexThreadId);
   assert.equal(result.session?.bridgeSessionId, original.session?.bridgeSessionId);
 
@@ -5751,6 +5754,56 @@ test('/open accepts the current-page index in addition to raw thread ids', async
   });
 
   assert.equal(opened.session?.codexThreadId, first.session?.codexThreadId);
+});
+
+test('/open shows recent turns when Codex thread items use userMessage/agentMessage without explicit roles', async () => {
+  const { runtime, openai } = makeRuntime();
+
+  const created = await openai.startThread({
+    providerProfile: makeProviderProfile('openai-default', 'openai-native', 'OpenAI Default'),
+    cwd: '/home/ubuntu/dev/CodexBridge',
+    title: 'CodexBridge',
+    metadata: {},
+  });
+  const existing = openai.threads.get(created.threadId);
+  openai.threads.set(created.threadId, {
+    ...existing,
+    preview: '为什么我的命令无效？我都指定了路径/new /home/ubuntu/dev/CodexBridge',
+    turns: [
+      {
+        id: `${created.threadId}-turn-1`,
+        status: 'completed',
+        error: null,
+        items: [
+          { type: 'userMessage', role: null, phase: null, text: '为什么我的命令无效？我都指定了路径/new /home/ubuntu/dev/CodexBridge' },
+          { type: 'agentMessage', role: null, phase: 'commentary', text: '我先检查一下当前线程绑定和命令解析路径。' },
+          { type: 'agentMessage', role: null, phase: 'final_answer', text: '问题在于 `/new` 前面缺少空格，导致整段被当成普通文本。' },
+        ],
+      },
+      {
+        id: `${created.threadId}-turn-2`,
+        status: 'completed',
+        error: null,
+        items: [
+          { type: 'userMessage', role: null, phase: null, text: '那你直接帮我处理吧。' },
+          { type: 'agentMessage', role: null, phase: 'final_answer', text: '我已经帮你切到正确目录，并准备继续处理。' },
+        ],
+      },
+    ],
+  });
+
+  const result = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-open-null-role',
+    text: `/open ${created.threadId}`,
+  });
+
+  assert.match(result.messages[3]?.text ?? '', /线程预览：/);
+  assert.match(result.messages[3]?.text ?? '', /最近 2 轮：/);
+  assert.match(result.messages[3]?.text ?? '', /你：为什么我的命令无效/);
+  assert.match(result.messages[3]?.text ?? '', /Codex：问题在于 `\/new` 前面缺少空格/);
+  assert.match(result.messages[3]?.text ?? '', /你：那你直接帮我处理吧/);
+  assert.match(result.messages[3]?.text ?? '', /Codex：我已经帮你切到正确目录/);
 });
 
 test('/rename updates the local thread alias used by /threads', async () => {

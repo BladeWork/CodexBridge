@@ -39,6 +39,7 @@ Project bootstrap is now focused on:
 Current implemented bridge pieces:
 
 - Core session routing with WeChat-friendly slash commands, including `/helps`, `/status`, `/usage`, `/login`, `/stop`, `/review`, `/agent`, `/plan`, `/skills`, `/plugins`, `/automation`, `/weibo`, `/new`, `/uploads`, `/as`, `/log`, `/todo`, `/remind`, `/note`, `/provider`, `/models`, `/model`, `/personality`, `/instructions`, `/fast`, `/threads`, `/search`, `/next`, `/prev`, `/open`, `/peek`, `/rename`, `/permissions`, `/allow`, `/deny`, `/reconnect`, `/retry`, `/restart`, and `/lang`
+- `/open` now rebinds the current scope and immediately returns a short recent-turn preview, so users can resume an old thread with one command instead of calling `/peek` first
 - File-backed JSON repositories for persistent bridge state
 - WeChat platform skeleton for Hermes-compatible iLink config loading, QR account state reuse, inbound DM normalization, long-poll client/poller wiring, context-token persistence, text chunking, and outbound text/typing delivery
 - Codex profile loader and initial Codex app-server client/plugin path for shared thread execution

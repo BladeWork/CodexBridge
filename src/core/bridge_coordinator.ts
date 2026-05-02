@@ -4147,11 +4147,24 @@ export class BridgeCoordinator {
         }),
       },
     );
-    return messageResponse([
+    const messages = [
       this.t('coordinator.open.opened', { threadId: session.codexThreadId }),
       this.t('coordinator.status.providerProfile', { id: providerProfile.id }),
       this.t('coordinator.status.bridgeSession', { id: session.id }),
-    ], buildSessionMeta(session));
+    ];
+    try {
+      const thread = await this.bridgeSessions.readProviderThread(
+        providerProfile.id,
+        session.codexThreadId,
+        { includeTurns: true },
+      );
+      if (thread) {
+        messages.push(renderThreadPeek(thread, this.currentI18n));
+      }
+    } catch {
+      // Keep /open usable even if the provider thread cannot be reopened for preview.
+    }
+    return messageResponse(messages, buildSessionMeta(session));
   }
 
   async handleModelsCommand(event) {
@@ -12919,7 +12932,7 @@ function summarizeAgentResult(result): string {
 function extractLastAssistantThreadText(thread): string {
   const turns = Array.isArray(thread?.turns) ? thread.turns : [];
   for (let index = turns.length - 1; index >= 0; index -= 1) {
-    const text = joinTurnRoleRawText(turns[index]?.items, 'assistant');
+    const text = joinTurnRoleRawText(turns[index]?.items, 'assistant', { preferFinalAnswer: true });
     if (text) {
       return text;
     }
@@ -13069,16 +13082,8 @@ function stripAgentArtifactProtocol(text: unknown): string {
     .trim();
 }
 
-function joinTurnRoleRawText(items, role): string {
-  if (!Array.isArray(items)) {
-    return '';
-  }
-  return items
-    .filter((item) => item?.role === role)
-    .map((item) => String(item?.text ?? '').trim())
-    .filter(Boolean)
-    .join('\n\n')
-    .trim();
+function joinTurnRoleRawText(items, role, options: { preferFinalAnswer?: boolean } = {}): string {
+  return collectTurnItemTexts(items, role, options).join('\n\n').trim();
 }
 
 function paginateTextByUtf8(text: string, maxBytes: number): string[] {
@@ -14859,7 +14864,7 @@ function extractRecentThreadTurns(turns) {
   for (let index = turns.length - 1; index >= 0; index -= 1) {
     const turn = turns[index];
     const userText = joinTurnRoleText(turn?.items, 'user');
-    const assistantText = joinTurnRoleText(turn?.items, 'assistant');
+    const assistantText = joinTurnRoleText(turn?.items, 'assistant', { preferFinalAnswer: true });
     if (!userText && !assistantText) {
       continue;
     }
@@ -14875,14 +14880,43 @@ function extractRecentThreadTurns(turns) {
   return recent;
 }
 
-function joinTurnRoleText(items, role) {
+function joinTurnRoleText(items, role, options: { preferFinalAnswer?: boolean } = {}) {
+  return compactWhitespace(collectTurnItemTexts(items, role, options).join(' '));
+}
+
+function collectTurnItemTexts(items, role, options: { preferFinalAnswer?: boolean } = {}): string[] {
   if (!Array.isArray(items)) {
-    return '';
+    return [];
   }
-  return compactWhitespace(items
-    .filter((item) => item?.role === role)
-    .map((item) => item?.text ?? '')
-    .join(' '));
+  const roleItems = items.filter((item) => isLogicalTurnItemRole(item, role));
+  if (roleItems.length === 0) {
+    return [];
+  }
+  let selectedItems = roleItems;
+  if (role === 'assistant' && options.preferFinalAnswer) {
+    const finalAnswerItems = roleItems.filter((item) => String(item?.phase ?? '').trim().toLowerCase() === 'final_answer');
+    if (finalAnswerItems.length > 0) {
+      selectedItems = finalAnswerItems;
+    }
+  }
+  return selectedItems
+    .map((item) => String(item?.text ?? '').trim())
+    .filter(Boolean);
+}
+
+function isLogicalTurnItemRole(item, role): boolean {
+  const explicitRole = String(item?.role ?? '').trim().toLowerCase();
+  if (explicitRole) {
+    return explicitRole === role;
+  }
+  const type = String(item?.type ?? '').trim();
+  if (role === 'user') {
+    return type === 'userMessage';
+  }
+  if (role === 'assistant') {
+    return type === 'agentMessage' || type === 'assistantMessage';
+  }
+  return false;
 }
 
 function classifyPreviewTurnStatus(status, assistantText) {

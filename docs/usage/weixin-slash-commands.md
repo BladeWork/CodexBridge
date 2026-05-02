@@ -624,6 +624,8 @@ Examples:
 
 Bind the current WeChat scope to an existing Codex thread.
 On WeChat, numeric indexes are the preferred way to open a thread.
+After rebinding, CodexBridge also returns a short recent-turn preview from that thread,
+so in many cases you can reopen a thread directly without calling `/peek` first.
 
 Examples:
 

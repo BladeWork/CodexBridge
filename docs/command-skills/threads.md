@@ -175,6 +175,7 @@ Rules:
 
 - Return exactly one best thread when confidence is high enough.
 - If multiple threads are plausible, use `clarify`.
+- `open_thread` now rebinds the current scope and also shows a short recent-turn preview from the opened thread, so users may not need a separate `peek_thread` first.
 - Use `peek_thread` when the user says "先看一下", "预览", "peek", or similar wording.
 
 ### `rename_thread`
