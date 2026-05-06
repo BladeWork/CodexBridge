@@ -62,6 +62,53 @@ test('loadCodexProfilesFromEnv exposes multiple JSON-defined compatible provider
   assert.equal(together?.config.capabilities?.multimodal?.supportsImageInput, false);
 });
 
+test('loadCodexProfilesFromEnv merges custom capability overrides for JSON-defined compatible providers', () => {
+  const result = loadCodexProfilesFromEnv({
+    CODEX_REAL_BIN: '/usr/bin/codex',
+    CODEX_COMPAT_PROFILES_JSON: JSON.stringify([{
+      id: 'custom-qwen',
+      displayName: 'Custom Qwen',
+      baseUrl: 'https://provider.example/v1',
+      defaultModel: 'qwen-plus',
+      capabilityPreset: 'qwen',
+      capabilityOverrides: {
+        supportsBuiltinWebSearchTool: true,
+        retry: {
+          maxAttempts: 4,
+        },
+        multimodal: {
+          supportsImageInput: true,
+        },
+      },
+    }]),
+  });
+
+  const profile = result.profiles.find((entry) => entry.id === 'custom-qwen');
+  assert.equal(profile?.providerKind, 'openai-compatible');
+  assert.equal(profile?.config.capabilities?.supportsBuiltinWebSearchTool, true);
+  assert.equal(profile?.config.capabilities?.retry?.maxAttempts, 4);
+  assert.equal(profile?.config.capabilities?.multimodal?.supportsImageInput, true);
+  assert.equal(profile?.config.capabilities?.multimodal?.supportsFileInput, false);
+});
+
+test('loadCodexProfilesFromEnv still accepts string capabilities as a preset alias', () => {
+  const result = loadCodexProfilesFromEnv({
+    CODEX_REAL_BIN: '/usr/bin/codex',
+    CODEX_COMPAT_PROFILES_JSON: JSON.stringify([{
+      id: 'alias-preset',
+      displayName: 'Alias Preset',
+      baseUrl: 'https://provider.example/v1',
+      defaultModel: 'qwen-plus',
+      capabilities: 'qwen',
+    }]),
+  });
+
+  const profile = result.profiles.find((entry) => entry.id === 'alias-preset');
+  assert.equal(profile?.providerKind, 'openai-compatible');
+  assert.equal(profile?.config.capabilities?.multimodal?.supportsImageInput, false);
+  assert.equal(profile?.config.capabilities?.multimodal?.supportsFileInput, false);
+});
+
 test('loadCodexProfilesFromEnv ignores invalid JSON-defined compatible providers', () => {
   const result = loadCodexProfilesFromEnv({
     CODEX_REAL_BIN: '/usr/bin/codex',

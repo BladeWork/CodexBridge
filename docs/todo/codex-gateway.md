@@ -73,6 +73,7 @@ Latest progress:
 - [x] Qwen/DashScope env alias handling is covered by dedicated config tests so compatible-provider onboarding stays registration-driven
 - [x] `CODEX_COMPAT_PROFILES_JSON` can now declare multiple custom OpenAI-compatible provider profiles without adding new provider/plugin classes
 - [x] `CODEX_COMPAT_PROFILES_PATH` now supports file-based custom compatible provider lists, with inline JSON taking precedence for duplicate IDs
+- [x] Custom compatible provider definitions can now merge `capabilityOverrides`, so provider-specific tool/multimodal/thinking/retry quirks can often stay in config instead of code
 - [x] Custom compatible profile JSON ignores invalid entries while preserving existing built-in preset, single-profile, and legacy config paths
 - [x] `scripts/check-codex-gateway-boundary.mjs` now enforces that legacy bridge-side shim files stay pure re-exports into `packages/codex-gateway`
 

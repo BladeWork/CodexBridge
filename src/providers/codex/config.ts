@@ -55,6 +55,7 @@ interface CustomOpenAICompatibleProfileConfig {
   model?: unknown;
   providerLabel?: unknown;
   capabilityPreset?: unknown;
+  capabilityOverrides?: unknown;
   capabilities?: unknown;
   upstreamChatCompletionsPath?: unknown;
   ownedBy?: unknown;
@@ -376,9 +377,8 @@ function buildCustomOpenAICompatibleProfileFromConfig({
   if (!id || !baseUrl || !defaultModel) {
     return null;
   }
-  const preset = getOpenAICompatibleProviderPreset(
-    normalizeString(rawProfile.capabilityPreset) ?? normalizeString(rawProfile.capabilities),
-  );
+  const preset = getOpenAICompatibleProviderPreset(resolveCustomProfilePresetId(rawProfile));
+  const capabilityOverrides = resolveCustomProfileCapabilityOverrides(rawProfile);
   const apiKeyEnv = normalizeString(rawProfile.apiKeyEnv) ?? `${toEnvToken(id)}_API_KEY`;
   return buildOpenAICompatibleProfile({
     id,
@@ -397,7 +397,10 @@ function buildCustomOpenAICompatibleProfileFromConfig({
     ownedBy: normalizeString(rawProfile.ownedBy) ?? preset.ownedBy,
     modelIds: parseFlexibleStringList(rawProfile.modelIds, preset.modelIds),
     modelCatalogPath: normalizeString(rawProfile.modelCatalogPath),
-    capabilities: mergeOpenAICompatibleProviderCapabilities(preset.capabilities),
+    capabilities: mergeOpenAICompatibleProviderCapabilities(
+      preset.capabilities,
+      capabilityOverrides,
+    ),
     now,
   });
 }
@@ -573,6 +576,25 @@ function parseCustomOpenAICompatibleProfileConfigsRaw(text: string): CustomOpenA
   } catch {
     return [];
   }
+}
+
+function resolveCustomProfilePresetId(rawProfile: CustomOpenAICompatibleProfileConfig): string | null {
+  return normalizeString(rawProfile.capabilityPreset)
+    ?? (typeof rawProfile.capabilities === 'string' ? normalizeString(rawProfile.capabilities) : null);
+}
+
+function resolveCustomProfileCapabilityOverrides(
+  rawProfile: CustomOpenAICompatibleProfileConfig,
+): OpenAICompatibleProviderCapabilities | null {
+  const explicit = rawProfile.capabilityOverrides;
+  if (explicit && typeof explicit === 'object' && !Array.isArray(explicit)) {
+    return explicit as OpenAICompatibleProviderCapabilities;
+  }
+  const legacy = rawProfile.capabilities;
+  if (legacy && typeof legacy === 'object' && !Array.isArray(legacy)) {
+    return legacy as OpenAICompatibleProviderCapabilities;
+  }
+  return null;
 }
 
 function buildRetryCapabilitiesFromEnv(
