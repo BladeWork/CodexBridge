@@ -316,6 +316,45 @@ test('contract: usage maps OpenAI usage, Gemini usageMetadata, and estimates whe
   assert.equal(estimatedUsage.usage.total_tokens > 0, true);
 });
 
+test('contract: usage metadata can associate normalized pricing with estimated response cost', () => {
+  const response = chatCompletionsResponseToResponses({
+    id: 'chatcmpl_usage_cost',
+    created: 1_700_000_004,
+    model: 'priced-model',
+    choices: [{
+      message: {
+        content: 'priced answer',
+      },
+    }],
+    usage: {
+      prompt_tokens: 10,
+      completion_tokens: 20,
+      total_tokens: 30,
+    },
+  }, {
+    request: {
+      model: 'priced-model',
+      input: 'hello',
+    },
+    modelMetadata: {
+      pricing: {
+        inputCostPerToken: 0.1,
+        output_cost_per_token: 0.2,
+      },
+    },
+  });
+
+  assert.deepEqual(response.usage.metadata.pricing, {
+    inputCostPerToken: 0.1,
+    outputCostPerToken: 0.2,
+  });
+  assert.deepEqual(response.usage.metadata.estimated_cost, {
+    input_cost: 1,
+    output_cost: 4,
+    total_cost: 5,
+  });
+});
+
 test('contract: upstream stream errors and read failures become Responses failures', async () => {
   const topLevelErrorEvents = translateChatCompletionsSseToResponsesEvents([
     JSON.stringify({

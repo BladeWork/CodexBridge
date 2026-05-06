@@ -236,6 +236,64 @@ test('adapter server preserves previous_response_id in non-streaming responses',
   }
 });
 
+test('adapter server associates usage with model pricing metadata', async () => {
+  const server = new OpenAICompatibleResponsesAdapterServer({
+    apiKey: 'test-key',
+    models: [{
+      id: 'priced-model',
+      pricing: {
+        inputCostPerToken: 0.1,
+        outputCostPerToken: 0.2,
+      },
+    }],
+    fetchImpl: (async () => new Response(JSON.stringify({
+      id: 'chatcmpl_priced_usage',
+      created: 1_700_000_111,
+      model: 'priced-model',
+      choices: [{
+        message: {
+          content: 'priced server answer',
+        },
+      }],
+      usage: {
+        prompt_tokens: 10,
+        completion_tokens: 20,
+        total_tokens: 30,
+      },
+    }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })) as typeof fetch,
+  });
+
+  await server.start();
+  try {
+    const response = await fetch(`${server.baseUrl}/responses`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'priced-model',
+        input: 'estimate this',
+      }),
+    });
+    const body = await response.json() as any;
+    assert.equal(response.status, 200);
+    assert.deepEqual(body.usage.metadata.pricing, {
+      inputCostPerToken: 0.1,
+      outputCostPerToken: 0.2,
+    });
+    assert.deepEqual(body.usage.metadata.estimated_cost, {
+      input_cost: 1,
+      output_cost: 4,
+      total_cost: 5,
+    });
+  } finally {
+    await server.stop();
+  }
+});
+
 test('adapter server preserves retry-after and rate-limit metadata for upstream HTTP errors', async () => {
   const server = new OpenAICompatibleResponsesAdapterServer({
     apiKey: 'test-key',

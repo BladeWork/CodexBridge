@@ -223,10 +223,15 @@ export class OpenAICompatibleResponsesAdapterServer {
       await this.writeStreamingResponse(requestBody, upstream.response, response);
       return;
     }
-    const json = await upstream.response.json();
+    const json = await upstream.response.json() as JsonRecord;
+    const modelMetadata = resolveModelMetadata(
+      this.models,
+      normalizeString(requestBody?.model) || normalizeString(json?.model) || this.defaultModel,
+    );
     writeJson(response, 200, chatCompletionsResponseToResponses(json, {
       request: requestBody,
       providerCapabilities: this.providerCapabilities,
+      modelMetadata,
     }));
   }
 
@@ -244,9 +249,14 @@ export class OpenAICompatibleResponsesAdapterServer {
     delete compactBody.stream;
 
     if (!this.providerCapabilities?.supportsResponsesCompact) {
+      const modelMetadata = resolveModelMetadata(
+        this.models,
+        normalizeString(compactBody?.model) || this.defaultModel,
+      );
       writeJson(response, 200, responsesRequestToCompactionResponse(compactBody, {
         request: compactBody,
         providerCapabilities: this.providerCapabilities,
+        modelMetadata,
       }));
       return;
     }
@@ -336,6 +346,10 @@ export class OpenAICompatibleResponsesAdapterServer {
       {
         request: requestBody,
         providerCapabilities: this.providerCapabilities,
+        modelMetadata: resolveModelMetadata(
+          this.models,
+          normalizeString(requestBody?.model) || this.defaultModel,
+        ),
       },
     )) {
       response.write(event);
@@ -480,6 +494,21 @@ function normalizeModels(
     created: now,
     owned_by: ownedBy,
   }];
+}
+
+function resolveModelMetadata(
+  models: Array<Record<string, any> & { id?: string; slug?: string; model?: string }>,
+  modelId: string,
+): JsonRecord | null {
+  const normalizedModelId = normalizeString(modelId);
+  if (!normalizedModelId) {
+    return null;
+  }
+  return models.find((model) => (
+    normalizeString(model?.id) === normalizedModelId
+    || normalizeString(model?.slug) === normalizedModelId
+    || normalizeString(model?.model) === normalizedModelId
+  )) ?? null;
 }
 
 function extractUpstreamError(text: string): string | null {

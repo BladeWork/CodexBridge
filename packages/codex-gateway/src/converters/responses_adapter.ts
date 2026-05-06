@@ -22,6 +22,7 @@ export interface ChatToResponsesOptions {
   responseId?: string | null;
   createdAt?: number | null;
   providerCapabilities?: OpenAICompatibleProviderCapabilities | null;
+  modelMetadata?: JsonRecord | null;
 }
 
 export interface ResponsesSseTranslateOptions extends ChatToResponsesOptions {}
@@ -225,8 +226,11 @@ export function chatCompletionsResponseToResponses(
     responseModel: normalizeString(chatResponse?.model) || null,
     status: 'completed',
     output,
-    usage: mapProviderUsage(chatResponse)
-      ?? estimateUsageIfEnabled(request, output, options),
+    usage: withUsagePricingMetadata(
+      mapProviderUsage(chatResponse)
+        ?? estimateUsageIfEnabled(request, output, options),
+      options.modelMetadata,
+    ),
   });
 }
 
@@ -242,7 +246,10 @@ export function responsesRequestToCompactionResponse(
     object: 'response.compaction',
     created_at: createdAt,
     output,
-    usage: estimateUsageIfEnabled(request, output, options),
+    usage: withUsagePricingMetadata(
+      estimateUsageIfEnabled(request, output, options),
+      options.modelMetadata,
+    ),
   });
 }
 
@@ -1464,6 +1471,29 @@ function mapUsage(usage: JsonRecord | null | undefined): JsonRecord | null {
   });
 }
 
+function withUsagePricingMetadata(
+  usage: JsonRecord | null | undefined,
+  modelMetadata: JsonRecord | null | undefined,
+): JsonRecord | null {
+  if (!usage || typeof usage !== 'object') {
+    return usage ?? null;
+  }
+  const pricing = normalizePricingMetadataForUsage(modelMetadata);
+  if (!pricing) {
+    return usage;
+  }
+  const metadata = firstRecord(usage.metadata) ?? {};
+  const estimatedCost = buildEstimatedCostMetadata(usage, pricing);
+  return omitUndefined({
+    ...usage,
+    metadata: omitUndefined({
+      ...metadata,
+      pricing,
+      estimated_cost: estimatedCost ?? undefined,
+    }),
+  });
+}
+
 function mapGeminiFamilyUsage(usage: unknown): JsonRecord | null {
   if (!usage || typeof usage !== 'object') {
     return null;
@@ -1542,6 +1572,66 @@ function firstRecord(...values: unknown[]): JsonRecord | null {
     }
   }
   return null;
+}
+
+function normalizePricingMetadataForUsage(modelMetadata: JsonRecord | null | undefined): JsonRecord | null {
+  const source = firstRecord(modelMetadata?.pricing, modelMetadata);
+  if (!source) {
+    return null;
+  }
+  const pricing = omitUndefined({
+    inputCostPerToken: normalizePositiveOrZeroNumber(
+      source.inputCostPerToken ?? source.input_cost_per_token,
+    ) ?? undefined,
+    outputCostPerToken: normalizePositiveOrZeroNumber(
+      source.outputCostPerToken ?? source.output_cost_per_token,
+    ) ?? undefined,
+    inputCostPerAudioToken: normalizePositiveOrZeroNumber(
+      source.inputCostPerAudioToken ?? source.input_cost_per_audio_token,
+    ) ?? undefined,
+    outputCostPerReasoningToken: normalizePositiveOrZeroNumber(
+      source.outputCostPerReasoningToken ?? source.output_cost_per_reasoning_token,
+    ) ?? undefined,
+    inputCostPerImage: normalizePositiveOrZeroNumber(
+      source.inputCostPerImage ?? source.input_cost_per_image,
+    ) ?? undefined,
+    outputCostPerImage: normalizePositiveOrZeroNumber(
+      source.outputCostPerImage ?? source.output_cost_per_image,
+    ) ?? undefined,
+    inputCostPerPixel: normalizePositiveOrZeroNumber(
+      source.inputCostPerPixel ?? source.input_cost_per_pixel,
+    ) ?? undefined,
+    outputCostPerPixel: normalizePositiveOrZeroNumber(
+      source.outputCostPerPixel ?? source.output_cost_per_pixel,
+    ) ?? undefined,
+    searchContextCostPerQuery: normalizePricingObject(
+      source.searchContextCostPerQuery ?? source.search_context_cost_per_query,
+    ) ?? undefined,
+  });
+  return Object.keys(pricing).length > 0 ? pricing : null;
+}
+
+function buildEstimatedCostMetadata(usage: JsonRecord, pricing: JsonRecord): JsonRecord | null {
+  const inputCost = multiplyFinite(
+    normalizeNumber(usage.input_tokens),
+    normalizeNumber(pricing.inputCostPerToken),
+  );
+  const outputCost = multiplyFinite(
+    normalizeNumber(usage.output_tokens),
+    normalizeNumber(pricing.outputCostPerToken),
+  );
+  const totalCost = [inputCost, outputCost].reduce<number | null>((sum, value) => {
+    if (value === null) {
+      return sum;
+    }
+    return (sum ?? 0) + value;
+  }, null);
+  const estimated = omitUndefined({
+    input_cost: inputCost ?? undefined,
+    output_cost: outputCost ?? undefined,
+    total_cost: totalCost ?? undefined,
+  });
+  return Object.keys(estimated).length > 0 ? estimated : null;
 }
 
 function estimateUsageIfEnabled(
@@ -1661,6 +1751,32 @@ function normalizeString(value: unknown): string {
 function normalizeNumber(value: unknown): number | null {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function normalizePositiveOrZeroNumber(value: unknown): number | null {
+  const number = normalizeNumber(value);
+  return number !== null && number >= 0 ? number : null;
+}
+
+function multiplyFinite(left: number | null, right: number | null): number | null {
+  if (left === null || right === null) {
+    return null;
+  }
+  const product = left * right;
+  return Number.isFinite(product) ? product : null;
+}
+
+function normalizePricingObject(value: unknown): JsonRecord | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const normalized = omitUndefined(Object.fromEntries(
+    Object.entries(value as JsonRecord).map(([key, entry]) => [
+      key,
+      normalizePositiveOrZeroNumber(entry) ?? undefined,
+    ]),
+  ));
+  return Object.keys(normalized).length > 0 ? normalized : null;
 }
 
 function copyIfPresent(source: JsonRecord, target: JsonRecord, key: string) {

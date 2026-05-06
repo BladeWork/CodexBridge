@@ -261,6 +261,7 @@ Current Phase 5 decision:
 - let server-side upstream error normalization preserve actionable gateway metadata such as `retry_after_ms`, request IDs, and selected rate-limit headers when available
 - let package-level model catalogs normalize optional pricing and context-window metadata so `/v1/models` can expose richer provider/model hints without bridge-specific logic
 - let usage normalization fold common provider aliases for cache, reasoning, audio, and prediction-token accounting into stable Responses usage details
+- let usage normalization associate usage totals with normalized model pricing metadata so the package can expose estimated input/output/total cost without bridge-owned billing logic
 - allow that standalone launcher to load dotenv-style env files inside the package itself, with explicit process env taking precedence over file defaults
 - keep the standalone adapter Responses-first: `/models`, `/responses`, and `/responses/compact` are the primary routes, while `/v1/*` stays as a compatibility alias layer
 - only revisit publication after the protocol boundary is demonstrably stable
