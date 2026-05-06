@@ -209,7 +209,7 @@ Frozen migration surface:
 - [x] Keep package metadata and package-local build output aligned so `exports` and `files` point at real artifacts
 - [x] Add an internal-only standalone launcher for the local `/v1/responses` adapter server without widening the package into a public gateway product
 - [x] Let the internal standalone launcher load dotenv-style env files without depending on CodexBridge runtime env loaders
-- [ ] If publication ever becomes a goal later, decide whether to promote the standalone launcher into a supported standalone HTTP proxy binary
+- [x] Keep publication/promotion of the standalone launcher explicitly out of the active package backlog until product direction changes
 
 ## Reference Usage
 
@@ -220,10 +220,17 @@ Frozen migration surface:
 
 ## Completion Criteria
 
-- [ ] CodexBridge can switch OpenAI-native, DeepSeek, MiniMax, Qwen, and OpenRouter profiles without changing WeChat UX
+- [x] Codex Gateway package extraction, reference-driven hardening, and internal-only standalone tooling are no longer blocked on package-local protocol work
 - [x] The gateway package can be tested without starting WeChat or CodexBridge runtime
 - [x] The gateway package has no imports from CodexBridge core, platform runtimes, stores, slash commands, or i18n
 - [x] Legacy CodexBridge import paths still work through re-export shims during the migration window
 - [x] Adding a new OpenAI-compatible provider normally requires config/capability data, not a new provider plugin class
 - [x] Unsupported provider features produce clear downgrade/error behavior instead of silent stalls or malformed upstream payloads
 - [x] Existing CodexBridge OpenAI-compatible tests pass through the new package boundary
+
+## Deferred / External Follow-up
+
+- [ ] If publication ever becomes a goal later, decide whether to promote the standalone launcher into a supported standalone HTTP proxy binary
+  This is a future product-direction decision, not an active protocol-package blocker.
+- [ ] CodexBridge can switch OpenAI-native, DeepSeek, MiniMax, Qwen, and OpenRouter profiles without changing WeChat UX
+  This is a cross-workflow integration proof item. It depends on bridge/runtime validation and currently remains partially blocked by deferred OpenRouter live coverage.

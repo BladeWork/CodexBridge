@@ -108,9 +108,9 @@ affect the product as a whole, not just one package.
 
 ### P2: Codex Gateway summary
 
-- [ ] Finish the remaining live-provider smoke coverage through real profiles
-- [ ] Keep new provider onboarding config-first and capability-driven
-- [ ] Decide whether the package remains internal-only or moves toward a publishable boundary
+- [ ] Prove end-to-end profile switching across OpenAI-native, DeepSeek, MiniMax, Qwen, and OpenRouter without changing WeChat UX
+- [ ] Revisit standalone launcher publication only if product direction changes; it is intentionally internal-only for now
+- [ ] Keep deferred OpenRouter live validation clearly separated from completed package-local protocol work
 
 Detailed checklist:
 
