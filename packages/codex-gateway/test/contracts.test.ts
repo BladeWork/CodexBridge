@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
 import {
   chatCompletionsResponseToResponses,
@@ -7,6 +9,8 @@ import {
   translateChatCompletionsSseStreamToResponsesSse,
   translateChatCompletionsSseToResponsesEvents,
 } from '../src/index.js';
+
+const FIXTURES_DIR = path.join(import.meta.dirname, 'fixtures');
 
 test('contract: Responses request converts to Chat request without bridge-owned fields', () => {
   const chat = responsesRequestToChatCompletions({
@@ -193,53 +197,7 @@ test('contract: tool-disabled models downgrade tool transcript instead of forwar
 });
 
 test('contract: streaming text and tool-call chunks produce Responses SSE events', () => {
-  const events = translateChatCompletionsSseToResponsesEvents([
-    JSON.stringify({
-      id: 'chatcmpl_stream_contract',
-      created: 1_700_000_002,
-      model: 'stream-model',
-      choices: [{
-        index: 0,
-        delta: {
-          content: 'hello',
-        },
-      }],
-    }),
-    JSON.stringify({
-      choices: [{
-        index: 0,
-        delta: {
-          tool_calls: [{
-            index: 0,
-            id: 'call_stream_1',
-            function: {
-              name: 'lookup',
-              arguments: '{"q"',
-            },
-          }],
-        },
-      }],
-    }),
-    JSON.stringify({
-      choices: [{
-        index: 0,
-        delta: {
-          tool_calls: [{
-            index: 0,
-            function: {
-              arguments: ':"x"}',
-            },
-          }],
-        },
-        finish_reason: 'tool_calls',
-      }],
-      usage: {
-        prompt_tokens: 4,
-        completion_tokens: 3,
-        total_tokens: 7,
-      },
-    }),
-  ], {
+  const events = translateChatCompletionsSseToResponsesEvents(readNdjsonFixture('stream-openai-tool-call.ndjson'), {
     request: {
       model: 'stream-model',
     },
@@ -285,16 +243,7 @@ test('contract: usage maps OpenAI usage, Gemini usageMetadata, and estimates whe
   assert.equal(openaiUsage.usage.output_tokens_details.accepted_prediction_tokens, 5);
   assert.equal(openaiUsage.usage.output_tokens_details.rejected_prediction_tokens, 6);
 
-  const geminiUsage = chatCompletionsResponseToResponses({
-    choices: [{ message: { content: 'ok' } }],
-    usageMetadata: {
-      promptTokenCount: 3,
-      candidatesTokenCount: 4,
-      thoughtsTokenCount: 2,
-      cachedContentTokenCount: 1,
-      totalTokenCount: 9,
-    },
-  });
+  const geminiUsage = chatCompletionsResponseToResponses(readJsonFixture('response-gemini-usage.json'));
   assert.equal(geminiUsage.usage.input_tokens, 3);
   assert.equal(geminiUsage.usage.output_tokens, 4);
   assert.equal(geminiUsage.usage.input_tokens_details.cached_tokens, 1);
@@ -357,11 +306,7 @@ test('contract: usage metadata can associate normalized pricing with estimated r
 
 test('contract: upstream stream errors and read failures become Responses failures', async () => {
   const topLevelErrorEvents = translateChatCompletionsSseToResponsesEvents([
-    JSON.stringify({
-      type: 'error',
-      code: 'rate_limit_exceeded',
-      message: 'too many requests',
-    }),
+    JSON.stringify(readJsonFixture('error-openai-rate-limit.json')),
   ], {
     request: {
       model: 'error-model',
@@ -464,3 +409,14 @@ test('contract: multimodal capability downgrades unsupported image and file inpu
   assert.match(chat.messages[0].content, /Unsupported image input omitted/);
   assert.match(chat.messages[0].content, /Unsupported file input omitted: report\.pdf/);
 });
+
+function readJsonFixture(fileName: string): any {
+  return JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, fileName), 'utf8'));
+}
+
+function readNdjsonFixture(fileName: string): string[] {
+  return fs.readFileSync(path.join(FIXTURES_DIR, fileName), 'utf8')
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}

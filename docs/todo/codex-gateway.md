@@ -90,6 +90,7 @@ Latest progress:
 - [x] Package `/v1/models` output now includes a normalized `protocol` view that merges provider defaults with model overrides for tools, multimodal input, reasoning, compact support, structured output, and output-token limits
 - [x] Package-local trace mode now exposes optional request/response/retry/stream trace hooks, and the internal standalone launcher can emit those trace events as NDJSON to stderr
 - [x] Upstream error normalization now exposes stable categories and retry hints for authentication, rate-limit, transient, unsupported-feature, invalid-request, and malformed-upstream cases
+- [x] Package contract coverage now includes provider-shaped golden fixtures for streaming tool-call deltas, Gemini-style usage payloads, and top-level rate-limit error events
 - [x] `open-responses`-inspired package server coverage now locks `/models`, `/responses`, and `/responses/compact` as the primary Responses-first routes, while keeping `/v1/*` aliases for SDK compatibility
 - [x] `llm-rosetta`-inspired protocol-boundary rules now explicitly lock `openai-chat-compatible` to the current direct adapter path and defer Anthropic/Gemini-native targets behind a future IR gate
 
@@ -249,10 +250,11 @@ not bridge-side WeChat product work.
   transient upstream failures, unsupported-feature responses, invalid
   requests, and malformed provider payloads with stable machine-readable
   categories and retry guidance.
-- [ ] Add package-local golden fixtures for real provider responses and stream events
-  Capture representative non-streaming, streaming, tool-call, multimodal, and
-  downgrade samples so future adapter changes can be checked against stable
-  protocol fixtures instead of only synthetic unit inputs.
+- [x] Add package-local golden fixtures for real provider responses and stream events
+  The package now keeps representative provider-shaped fixture files for
+  streaming tool-call events, Gemini-style usage payloads, and top-level
+  rate-limit error events so future adapter changes can be checked against
+  stable protocol samples instead of only synthetic unit inputs.
 - [x] Extend package `/v1/models` output with richer protocol-facing metadata
   The package now exposes a normalized `protocol` block alongside raw model
   capability data so bridge/UI introspection can rely on effective adapter
