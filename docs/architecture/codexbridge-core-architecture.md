@@ -368,8 +368,7 @@ Phase 0 validation baseline:
 - `pnpm exec tsx --test test/providers/openai_compatible/responses_websocket_repair.test.ts`
 - `pnpm exec tsx --test test/providers/openai_compatible/plugin.test.ts`
 
-Phase 1A establishes the package boundary without moving production adapter
-logic yet:
+Phase 1A establishes the package boundary:
 
 - package root: `packages/responses-adapter`
 - source entry: `packages/responses-adapter/src/index.ts`
@@ -378,9 +377,16 @@ logic yet:
 - package public-surface test: `pnpm run responses-adapter:test`
 - boundary check: `pnpm run responses-adapter:check-boundary`
 
-The Phase 1A package entry only exports the boundary contract metadata. Adapter
-functions remain under `src/providers/openai_compatible/*` until the next
-phases move real protocol code behind shims.
+Phase 1B moves the first pure protocol/data slice into the package:
+
+- `packages/responses-adapter/src/capabilities/thinking_policy.ts`
+- `packages/responses-adapter/src/capabilities/cliproxy_model_catalog.ts`
+- `packages/responses-adapter/src/capabilities/capability_presets.ts`
+
+The legacy CodexBridge paths are now re-export shims for those files. Request
+conversion, response conversion, stream conversion, and the local adapter server
+remain under `src/providers/openai_compatible/*` until the next phases move
+them behind equivalent shims.
 
 CodexBridge keeps all bridge/runtime behavior:
 

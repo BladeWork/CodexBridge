@@ -120,9 +120,12 @@ Migration plan:
 - [x] Phase 1A: add package-level TypeScript config and test entrypoints before moving production logic
 - [x] Phase 1A: add bootstrap public exports for package identity and ownership boundaries
 - [x] Phase 1A: add an automated dependency-boundary check so package code cannot import CodexBridge core/platform/runtime/store/i18n modules
-- [ ] Phase 1B: define the migrated adapter public API exports and keep helper functions private
-- [ ] Phase 1B: move shared types and pure data first: Responses/Chat shapes, capability types, thinking policy, payload rules, and CLIProxyAPI-style model catalog import
-- [ ] Phase 1B: keep legacy re-export shims under `src/providers/openai_compatible/*` and `src/providers/shared/thinking_policy.ts` so current imports keep working during migration
+- [x] Phase 1B: export provider capability presets, CLIProxyAPI-style model catalog helpers, and thinking policy from the package boundary
+- [x] Phase 1B: move provider capability types, thinking policy, payload rules, and CLIProxyAPI-style model catalog import into `packages/responses-adapter`
+- [x] Phase 1B: keep legacy re-export shims for migrated capability files under `src/providers/openai_compatible/*` and `src/providers/shared/thinking_policy.ts`
+- [ ] Phase 1C: define the migrated converter/server public API exports and keep helper functions private
+- [ ] Phase 1C: move Responses/Chat shapes and pure request/response converter types into the package
+- [ ] Phase 1C: keep legacy re-export shims for converter/server files under `src/providers/openai_compatible/*`
 - [ ] Phase 2: move pure converters: request conversion, response conversion, usage mapping, error mapping, multimodal conversion, and tool-name repair
 - [ ] Phase 2: move stream converters and SSE parser/builder while preserving the existing `response.created`, `response.output_item.added`, `response.output_text.delta`, `response.failed`, and `response.completed` behavior
 - [ ] Phase 2: migrate adapter unit tests to the package boundary and keep CodexBridge tests as integration coverage
@@ -153,6 +156,16 @@ Phase 1A package bootstrap:
 - [x] Boundary script: `scripts/check-responses-adapter-boundary.mjs`
 - [x] Root `tsconfig.json` includes `packages/**/*.ts` so full typecheck/build sees package code
 - [x] Phase 1A verification run on 2026-05-06: `responses-adapter:typecheck`, `responses-adapter:test`, `responses-adapter:check-boundary`, `responses-adapter:build`, root `typecheck`, root `build`, and `git diff --check`
+
+Phase 1B capability migration:
+
+- [x] Moved `src/providers/shared/thinking_policy.ts` implementation to `packages/responses-adapter/src/capabilities/thinking_policy.ts`
+- [x] Moved `src/providers/openai_compatible/cliproxy_model_catalog.ts` implementation to `packages/responses-adapter/src/capabilities/cliproxy_model_catalog.ts`
+- [x] Moved `src/providers/openai_compatible/capability_presets.ts` implementation to `packages/responses-adapter/src/capabilities/capability_presets.ts`
+- [x] Replaced the old CodexBridge paths with re-export shims so existing imports continue to work
+- [x] Removed the package-side dependency on CodexBridge `ProviderModelInfo` by introducing a package-local structural `OpenAICompatibleModelInfo`
+- [x] Added package-level capability tests for presets, external catalog import, reasoning effort resolution, and model capability overrides
+- [x] Phase 1B verification run on 2026-05-06: `responses-adapter:typecheck`, `responses-adapter:test`, `responses-adapter:check-boundary`, `responses-adapter:build`, OpenAI-compatible adapter/config/plugin tests, root `typecheck`, root `build`, and `git diff --check`
 
 Reference usage:
 

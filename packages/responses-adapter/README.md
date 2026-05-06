@@ -27,6 +27,14 @@ It must not own bridge behavior:
 - bridge sessions, thread binding, approval, retry, or reconnect state
 - assistant records, automations, uploads, or artifact delivery policy
 
-Phase 1A is intentionally only the package skeleton plus boundary checks. The
-production adapter code still lives under `src/providers/openai_compatible/*`
-until the migration phases move code behind re-export shims.
+Phase 1B has moved the provider capability catalog, CLIProxyAPI-style model
+catalog, and reasoning/thinking policy into this package. The old CodexBridge
+paths still exist as re-export shims during migration:
+
+- `src/providers/openai_compatible/capability_presets.ts`
+- `src/providers/openai_compatible/cliproxy_model_catalog.ts`
+- `src/providers/shared/thinking_policy.ts`
+
+The request/response converters, stream converters, and local adapter server
+still live under `src/providers/openai_compatible/*` until the next migration
+phases move them behind equivalent shims.
