@@ -232,5 +232,5 @@ Frozen migration surface:
 
 - [ ] If publication ever becomes a goal later, decide whether to promote the standalone launcher into a supported standalone HTTP proxy binary
   This is a future product-direction decision, not an active protocol-package blocker.
-- [ ] CodexBridge can switch OpenAI-native, DeepSeek, MiniMax, Qwen, and OpenRouter profiles without changing WeChat UX
-  This is a cross-workflow integration proof item. It depends on bridge/runtime validation and currently remains partially blocked by deferred OpenRouter live coverage.
+- [x] CodexBridge can switch OpenAI-native, DeepSeek, MiniMax, Qwen, and OpenRouter profiles without changing WeChat UX
+  Bridge/runtime regression coverage now proves stable WeChat-facing `/provider`, `/status`, and `/models` UX across those profile ids. Deferred OpenRouter live smoke remains tracked separately as upstream-provider validation, not as a remaining bridge UX gap.

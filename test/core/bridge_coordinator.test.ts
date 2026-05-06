@@ -514,6 +514,8 @@ function makeProviderProfile(id, providerKind, displayName) {
 
 function makeRuntime({
   defaultCwd = null,
+  providerProfiles = null,
+  defaultProviderProfileId = 'openai-default',
   restartBridge = null,
   locale = null,
   platformPlugins = [],
@@ -526,11 +528,11 @@ function makeRuntime({
   const runtime = createCodexBridgeRuntime({
     platformPlugins,
     providerPlugins: [openai, compatible],
-    providerProfiles: [
+    providerProfiles: providerProfiles ?? [
       makeProviderProfile('openai-default', 'openai-native', 'OpenAI Default'),
       makeProviderProfile('compat-default', 'openai-compatible', 'Compatible Default'),
     ],
-    defaultProviderProfileId: 'openai-default',
+    defaultProviderProfileId,
     defaultCwd,
     locale,
     restartBridge,
@@ -5412,6 +5414,89 @@ test('/provider switches the scope to a new provider-backed session', async () =
   assert.equal(reboundSettings?.model, null);
   assert.equal(reboundSettings?.reasoningEffort, null);
   assert.equal(reboundSettings?.serviceTier, null);
+});
+
+test('/provider keeps WeChat-facing command UX stable across multiple provider profiles', async () => {
+  const providerProfiles = [
+    makeProviderProfile('openai-default', 'openai-native', 'OpenAI Default'),
+    makeProviderProfile('deepseek', 'openai-compatible', 'DeepSeek'),
+    makeProviderProfile('minimax', 'openai-compatible', 'MiniMax'),
+    makeProviderProfile('qwen', 'openai-compatible', 'Qwen'),
+    makeProviderProfile('openrouter', 'openai-compatible', 'OpenRouter'),
+  ];
+  const { runtime, openai, compatible } = makeRuntime({
+    providerProfiles,
+    defaultProviderProfileId: 'openai-default',
+    defaultCwd: '/tmp/provider-proof',
+  });
+  const scope = {
+    platform: 'weixin' as const,
+    externalScopeId: 'wx-user-provider-proof-1',
+  };
+  const seenSessionIds = new Set<string>();
+  const seenThreadIds = new Set<string>();
+
+  const initial = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    ...scope,
+    text: 'hello provider proof',
+  });
+  assert.equal(initial.session?.providerProfileId, 'openai-default');
+  assert.ok(initial.session?.bridgeSessionId);
+  assert.ok(initial.session?.codexThreadId);
+  seenSessionIds.add(initial.session?.bridgeSessionId ?? '');
+  seenThreadIds.add(initial.session?.codexThreadId ?? '');
+
+  for (const profileId of ['deepseek', 'minimax', 'qwen', 'openrouter', 'openai-default']) {
+    const switchResult = await runtime.services.bridgeCoordinator.handleInboundEvent({
+      ...scope,
+      text: `/provider ${profileId}`,
+    });
+    const rebound = runtime.services.bridgeSessions.resolveScopeSession(scope);
+
+    assert.match(switchResult.messages[0]?.text ?? '', new RegExp(`已切换到 Provider 配置：${profileId}`));
+    assert.equal(switchResult.session?.providerProfileId, profileId);
+    assert.ok(rebound);
+    assert.equal(rebound?.providerProfileId, profileId);
+    assert.ok(rebound?.id);
+    assert.ok(rebound?.codexThreadId);
+    assert.ok(!seenSessionIds.has(rebound?.id ?? ''), `expected fresh session for ${profileId}`);
+    assert.ok(!seenThreadIds.has(rebound?.codexThreadId ?? ''), `expected fresh thread for ${profileId}`);
+    seenSessionIds.add(rebound?.id ?? '');
+    seenThreadIds.add(rebound?.codexThreadId ?? '');
+
+    const status = await runtime.services.bridgeCoordinator.handleInboundEvent({
+      ...scope,
+      text: '/status',
+    });
+    const statusLines = status.messages.map((message) => message.text ?? '');
+    assert.ok(statusLines.includes(`接口配置：${profileId}`));
+    assert.ok(statusLines.some((line) => /^会话标题：/.test(line)));
+    assert.ok(statusLines.includes('工作目录：/tmp/provider-proof'));
+    assert.ok(statusLines.includes('速度模式：normal'));
+    assert.ok(statusLines.includes('模型：gpt-5.4'));
+    assert.ok(statusLines.includes('推理强度：'));
+    assert.ok(statusLines.includes('权限预设：'));
+    assert.ok(statusLines.includes('完整信息：/status details'));
+    assert.ok(statusLines.every((line) => !/Scope：/.test(line)));
+    assert.ok(statusLines.every((line) => !/当前 Turn：/.test(line)));
+    assert.ok(statusLines.every((line) => !/Turn 状态：/.test(line)));
+    assert.ok(statusLines.every((line) => !/Bridge 会话：/.test(line)));
+    assert.ok(statusLines.every((line) => !/Codex 线程：/.test(line)));
+
+    const models = await runtime.services.bridgeCoordinator.handleInboundEvent({
+      ...scope,
+      text: '/models',
+    });
+    const modelsText = models.messages.map((message) => message.text ?? '').join('\n');
+    assert.match(modelsText, new RegExp(`可用模型：${profileId}`));
+    assert.match(modelsText, /当前生效模型：gpt-5\.4/);
+    assert.match(modelsText, /模型来源：provider 默认/);
+    assert.match(modelsText, /模型列表：/);
+    assert.match(modelsText, /1\. gpt-5\.4 .*（当前）.*（默认）/);
+  }
+
+  assert.equal(openai.startThreadCalls.length, 2);
+  assert.equal(compatible.startThreadCalls.length, 4);
 });
 
 test('/open preserves plan mode when rebinding to another thread', async () => {

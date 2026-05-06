@@ -108,7 +108,7 @@ affect the product as a whole, not just one package.
 
 ### P2: Codex Gateway summary
 
-- [ ] Prove end-to-end profile switching across OpenAI-native, DeepSeek, MiniMax, Qwen, and OpenRouter without changing WeChat UX
+- [x] Prove end-to-end profile switching across OpenAI-native, DeepSeek, MiniMax, Qwen, and OpenRouter without changing WeChat UX
 - [ ] Revisit standalone launcher publication only if product direction changes; it is intentionally internal-only for now
 - [ ] Keep deferred OpenRouter live validation clearly separated from completed package-local protocol work
 
