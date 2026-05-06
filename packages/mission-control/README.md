@@ -31,9 +31,9 @@ It must not own bridge behavior:
 
 Current phase:
 
-- `phase-1-domain-persistence`: package boundary plus durable mission domain,
-  explicit state transitions, repository ports, and first local JSON
-  persistence
+- `phase-2-workflow-workpad-foundations`: package boundary plus durable mission
+  domain, repository-backed persistence, typed workflow loading, canonical
+  attempt prompt contract, and workpad status rendering helpers
 
 This package should preserve the Symphony-style separation between:
 

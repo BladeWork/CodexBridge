@@ -426,6 +426,18 @@ If this file is missing, CodexBridge should use a built-in safe default. Invalid
 YAML should not break normal bridge startup; it should block only mission runs
 that depend on that workflow.
 
+Phase 2 foundations inside `packages/mission-control` should provide:
+
+- `MissionWorkflowLoader`
+  - resolves explicit path, env override, or workspace/cwd default
+  - returns built-in defaults when the file is missing
+  - surfaces a typed workflow validation error when config is invalid
+- a canonical mission-attempt prompt contract renderer
+  - keeps prompt responsibility separate from orchestrator/verifier authority
+- workpad status rendering helpers
+  - expose workflow source, summary, blocker, verifier notes, final result
+  - expose compact attempt history for future `/agent show` integration
+
 ### 3. Mission Model
 
 `AgentJob` can remain the v0 execution record, but the target abstraction should
@@ -814,7 +826,12 @@ should not own mission state.
 - Add `MissionWorkflowLoader` for `.codexbridge/mission/WORKFLOW.md`.
 - Parse YAML front matter plus prompt body.
 - Keep workflow policy outside slash-command handlers.
-- Show workflow source and workpad summary in `/agent show`.
+- Add a canonical mission-attempt prompt contract so prompt, orchestrator, and
+  verifier stay separated.
+- Add package-local workpad status helpers that expose workflow source, summary,
+  blocker, verifier notes, final result, and attempt history.
+- Integrate those helpers into `/agent show` only after the package-side
+  contract is stable.
 
 ### Phase 3: Add workspace isolation and recovery-safe leases
 

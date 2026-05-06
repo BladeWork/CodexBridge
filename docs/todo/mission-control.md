@@ -228,18 +228,18 @@ Completion criteria:
 
 ## Phase 2: Workflow and Workpad
 
-- [ ] Add `MissionWorkflowLoader` for `.codexbridge/mission/WORKFLOW.md`
-- [ ] Parse YAML front matter plus prompt body
-- [ ] Keep workflow config as the primary policy surface instead of embedding
+- [x] Add `MissionWorkflowLoader` for `.codexbridge/mission/WORKFLOW.md`
+- [x] Parse YAML front matter plus prompt body
+- [x] Keep workflow config as the primary policy surface instead of embedding
   run behavior into slash-command handlers
-- [ ] Define a canonical mission-attempt prompt contract so prompt,
+- [x] Define a canonical mission-attempt prompt contract so prompt,
   orchestrator, and verifier responsibilities stay separated
-- [ ] Add safe built-in defaults when the file is missing
-- [ ] Reject mission execution when workflow config is invalid, but do not block
+- [x] Add safe built-in defaults when the file is missing
+- [x] Reject mission execution when workflow config is invalid, but do not block
   normal bridge startup
-- [ ] Design the config layer so path/env/default resolution can evolve toward a
+- [x] Design the config layer so path/env/default resolution can evolve toward a
   typed workflow-policy contract
-- [ ] Add workpad rendering helpers for:
+- [x] Add workpad rendering helpers for:
   - compact summary
   - latest blocker
   - attempt history
@@ -248,7 +248,7 @@ Completion criteria:
 
 Completion criteria:
 
-- [ ] Workflow source is visible in mission status
+- [x] Workflow source is visible in mission status
 - [ ] Workpad can survive restart and multiple attempts
 
 ## Phase 3: Workspace and Lease Management

@@ -13,7 +13,7 @@ import {
 import type { MissionAttempt, MissionEvent } from '../src/index.js';
 
 test('mission control package exposes the phase-1 domain and persistence surface', () => {
-  assert.equal(MISSION_CONTROL_PACKAGE_PHASE, 'phase-1-domain-persistence');
+  assert.equal(MISSION_CONTROL_PACKAGE_PHASE, 'phase-2-workflow-workpad-foundations');
 });
 
 test('mission state transitions are explicit and reject invalid transitions', () => {
@@ -144,4 +144,3 @@ test('json repository can create, update, stop, and recover resumable missions a
   assert.equal(finalMission?.statusReason, 'User requested stop.');
   assert.equal(finalRepo.listResumableMissions(1_700_000_100_500).length, 0);
 });
-
