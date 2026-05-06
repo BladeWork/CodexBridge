@@ -86,6 +86,7 @@ Latest progress:
 - [x] LiteLLM-inspired upstream error normalization now preserves `retry_after_ms` plus selected request/rate-limit headers at the package server boundary
 - [x] LiteLLM-style model catalog pricing and context-window metadata are now normalized and preserved through package `/v1/models` output
 - [x] LiteLLM-style usage aliases such as cache, reasoning, audio, and prediction token fields are now normalized into Responses usage details at the package boundary
+- [x] `open-responses`-inspired package server coverage now locks `/models`, `/responses`, and `/responses/compact` as the primary Responses-first routes, while keeping `/v1/*` aliases for SDK compatibility
 
 ## Packaging Direction
 
@@ -213,7 +214,7 @@ Frozen migration surface:
 - [x] Use codex-proxy as the main reference for Codex Responses event handling, `previous_response_id`, function-call streams, and real protocol tests
 - [ ] Use llm-rosetta as the reference for a future IR layer; do not add a full IR until Responses-to-Chat starts blocking Anthropic/Gemini-native support
 - [ ] Use LiteLLM as the reference for provider catalogs, cost/usage metadata, retry/error taxonomy, and gateway-level operational concerns
-- [ ] Treat open-responses as a Responses-first product reference, not as code to vendor into this adapter
+- [x] Treat open-responses as a Responses-first product reference, not as code to vendor into this adapter
 
 ## Completion Criteria
 

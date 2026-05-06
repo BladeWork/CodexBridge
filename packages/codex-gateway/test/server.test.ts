@@ -113,6 +113,78 @@ test('adapter server exposes model metadata from package boundary', async () => 
   }
 });
 
+test('adapter server keeps Responses-first root routes while preserving /v1 aliases', async () => {
+  let fetchCalls = 0;
+  const server = new OpenAICompatibleResponsesAdapterServer({
+    apiKey: 'test-key',
+    models: [{
+      id: 'root-route-model',
+      contextWindow: 64000,
+    }],
+    fetchImpl: (async () => {
+      fetchCalls += 1;
+      return new Response(JSON.stringify({
+        id: 'chatcmpl_root_route',
+        created: 1_700_000_050,
+        model: 'root-route-model',
+        choices: [{
+          message: {
+            content: 'root route answer',
+          },
+        }],
+      }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+    }) as typeof fetch,
+    providerCapabilities: {
+      supportsResponsesCompact: false,
+      usage: {
+        estimateWhenMissing: true,
+      },
+    },
+  });
+
+  await server.start();
+  try {
+    const modelsResponse = await fetch(`${server.baseUrl}/models`);
+    const modelsBody = await modelsResponse.json() as any;
+    assert.equal(modelsResponse.status, 200);
+    assert.equal(modelsBody.data[0].id, 'root-route-model');
+
+    const response = await fetch(`${server.baseUrl}/responses`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'root-route-model',
+        input: 'hello via root route',
+      }),
+    });
+    const responseBody = await response.json() as any;
+    assert.equal(response.status, 200);
+    assert.equal(responseBody.object, 'response');
+    assert.equal(responseBody.output[0].content[0].text, 'root route answer');
+
+    const compactResponse = await fetch(`${server.baseUrl}/responses/compact`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'root-route-model',
+        input: 'hello compact root route',
+      }),
+    });
+    const compactBody = await compactResponse.json() as any;
+    assert.equal(compactResponse.status, 200);
+    assert.equal(compactBody.object, 'response.compaction');
+    assert.equal(compactBody.output[0].content[0].text, 'hello compact root route');
+    assert.equal(fetchCalls, 1);
+  } finally {
+    await server.stop();
+  }
+});
+
 test('reserveLocalPort is exported from the package boundary', async () => {
   const port = await reserveLocalPort();
   assert.equal(Number.isInteger(port), true);

@@ -12,7 +12,9 @@ Current release policy:
 ## Internal standalone server
 
 This package now includes an internal-only launcher for the local Responses
-adapter server. Build the package, then run:
+adapter server. The primary routes are `GET /models`, `POST /responses`, and
+`POST /responses/compact`; `/v1/*` aliases remain available for OpenAI SDK
+compatibility. Build the package, then run:
 
 ```bash
 pnpm --dir packages/codex-gateway run serve
@@ -73,7 +75,8 @@ This package owns only protocol behavior:
 - usage and error normalization
 - multimodal and reasoning/thinking payload policy
 - provider capability and payload rules
-- a local `/v1/responses` adapter server
+- a local Responses adapter server with `/responses` and `/v1/responses`
+  compatibility routes
 
 It must not own bridge behavior:
 
@@ -86,8 +89,9 @@ It must not own bridge behavior:
 Phase 1B moved the provider capability catalog, CLIProxyAPI-style model catalog,
 and reasoning/thinking policy into this package. Phase 1C moved the pure
 Responses/Chat converter and SSE translator implementation into this package.
-Phase 3 moved the local `/v1/responses` adapter server into this package. The
-old CodexBridge paths still exist as re-export shims during migration:
+Phase 3 moved the local Responses adapter server into this package, with
+Responses-first root routes and `/v1/*` compatibility aliases. The old
+CodexBridge paths still exist as re-export shims during migration:
 
 - `src/providers/openai_compatible/capability_presets.ts`
 - `src/providers/openai_compatible/cliproxy_model_catalog.ts`
@@ -120,4 +124,4 @@ CODEXBRIDGE_TEST_ENV_FILE=/path/to/codexbridge.env pnpm run test:live-openai-com
 
 The live test runner does not print API key values. It skips providers whose
 profile env is missing, and verifies available provider profiles through the
-local `/v1/responses` adapter server.
+local Responses adapter server.

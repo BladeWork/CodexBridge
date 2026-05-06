@@ -29,7 +29,7 @@ async function main(): Promise<void> {
   if (args.envFilePath || env.CODEX_GATEWAY_ENV_FILE) {
     console.log(`Env file: ${args.envFilePath ?? env.CODEX_GATEWAY_ENV_FILE}`);
   }
-  console.log('Routes: GET /v1/models, POST /v1/responses, POST /v1/responses/compact');
+  console.log('Routes: GET /models (alias /v1/models), POST /responses (alias /v1/responses), POST /responses/compact (alias /v1/responses/compact)');
   console.log('Press Ctrl+C to stop.');
 
   const shutdown = async (signal: string) => {
@@ -79,7 +79,7 @@ function printHelp(): void {
   console.log([
     'Usage: codex-gateway-server [--env-file <path>]',
     '',
-    'Internal-only launcher for the Codex Gateway local /v1/responses adapter server.',
+    'Internal-only launcher for the Codex Gateway local Responses adapter server.',
     '',
     'Options:',
     '  --env-file <path>  Load dotenv-style defaults before resolving provider env',
