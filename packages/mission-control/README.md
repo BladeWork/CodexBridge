@@ -32,12 +32,13 @@ It must not own bridge behavior:
 
 Current phase:
 
-- `phase-5-verifier-foundations`: package boundary plus durable mission
+- `phase-5-runtime-loop`: package boundary plus durable mission
   domain, repository-backed persistence, typed workflow loading, canonical
   attempt prompt contract, workpad status rendering helpers, deterministic
   workspace assignment, recovery-safe lease coordination, provider port,
-  `CodexMissionProvider` adapter shell, and verifier/budget/repair-prompt
-  primitives
+  `CodexMissionProvider` adapter shell, verifier/budget/repair-prompt
+  primitives, and a repository-backed bounded mission runtime that drives
+  continuation, repair/retry, verifier authority, and stop/interrupt control
 
 This package should preserve the Symphony-style separation between:
 

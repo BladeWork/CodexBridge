@@ -293,7 +293,7 @@ The first real provider is current Codex app-server execution.
 - [x] Add `MissionProvider` port
 - [x] Add `CodexMissionProvider`
 - [x] Reuse provider profile + Codex thread binding safely
-- [ ] Support:
+- [x] Support:
   - start
   - continue
   - wait
@@ -315,6 +315,8 @@ Phase 4 source-of-truth tests:
   - `provider helpers persist provider ids on attempts and map terminal outcomes into mission states`
   - `continuation scheduling only applies to active missions with remaining budget`
   - `CodexMissionProvider reuses provider profile, thread binding, and workspace assignment safely`
+- `packages/mission-control/test/runtime_loop.test.ts`
+  - `mission runtime stopMission interrupts the active provider run and marks the attempt stopped`
 
 ## Phase 5: Verification Loop
 
@@ -332,7 +334,7 @@ mission runtime.
   - `failed`
 - [x] Persist verifier summaries and missing acceptance criteria
 - [x] Add repair prompt generation / reuse
-- [ ] Enforce:
+- [x] Enforce:
   - max attempts
   - max turns
   - max runtime
@@ -340,15 +342,16 @@ mission runtime.
 - [x] Make `waiting_user` / `needs_human` / `handoff` explicit verifier- or
   provider-driven outcomes instead of generic failure buckets
 
-Phase 5 foundations landed in-package, but the orchestration loop still needs
-to consume verifier budgets and make verifier verdicts the authority for
-retry/continuation decisions.
+Phase 5 runtime loop landed in-package: Mission Control now consumes verifier
+budgets, uses verifier verdicts as the completion authority, continues the same
+attempt after normal partial exits, retries with repair prompts when budget
+permits, and fails visibly when budget is exhausted.
 
 Completion criteria:
 
-- [ ] "Completed" means acceptance criteria passed
-- [ ] Missions do not silently stop after one provider response
-- [ ] Repair/retry is bounded and observable
+- [x] "Completed" means acceptance criteria passed
+- [x] Missions do not silently stop after one provider response
+- [x] Repair/retry is bounded and observable
 
 Phase 5 source-of-truth tests:
 
@@ -356,6 +359,10 @@ Phase 5 source-of-truth tests:
   - `verifier helpers normalize waiting-user and repair verdicts into explicit mission states`
   - `verifier helpers persist summaries and missing acceptance criteria onto attempts and missions`
   - `verifier budget helpers resolve workflow limits and report exhausted budgets`
+- `packages/mission-control/test/runtime_loop.test.ts`
+  - `mission runtime keeps verifier repair loops bounded and only completes after acceptance criteria pass`
+  - `mission runtime continues the same attempt after a normal partial exit and counts provider turns separately from attempts`
+  - `mission runtime converts verifier repair verdicts into budget-exhausted failure when no retry budget remains`
 
 ## Phase 6: CodexBridge Integration
 

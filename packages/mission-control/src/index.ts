@@ -1,6 +1,6 @@
 export const MISSION_CONTROL_PACKAGE_NAME = '@codexbridge/mission-control' as const;
 
-export const MISSION_CONTROL_PACKAGE_PHASE = 'phase-5-verifier-foundations' as const;
+export const MISSION_CONTROL_PACKAGE_PHASE = 'phase-5-runtime-loop' as const;
 
 export const MISSION_CONTROL_OWNS = [
   'mission-domain-model',
@@ -47,3 +47,4 @@ export * from './lease_coordinator.js';
 export * from './provider.js';
 export * from './codex_provider.js';
 export * from './verifier.js';
+export * from './runtime.js';
