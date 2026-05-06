@@ -13,7 +13,10 @@ async function main(): Promise<void> {
   }
 
   const env = resolveCodexGatewayStandaloneServerEnv({
-    env: process.env,
+    env: {
+      ...process.env,
+      ...(args.trace ? { CODEX_GATEWAY_TRACE: '1' } : {}),
+    },
     envFilePath: args.envFilePath,
   });
   const { config, server } = createCodexGatewayStandaloneServerFromEnv(env);
@@ -26,6 +29,7 @@ async function main(): Promise<void> {
   console.log(`Default model: ${config.defaultModel}`);
   console.log(`Local base URL: ${server.baseUrl}`);
   console.log(`Model catalog source: ${config.modelCatalogSource}`);
+  console.log(`Trace mode: ${config.traceMode}`);
   if (args.envFilePath || env.CODEX_GATEWAY_ENV_FILE) {
     console.log(`Env file: ${args.envFilePath ?? env.CODEX_GATEWAY_ENV_FILE}`);
   }
@@ -50,9 +54,11 @@ void main().catch((error) => {
 function parseCliArgs(argv: string[]): {
   envFilePath: string | null;
   help: boolean;
+  trace: boolean;
 } {
   let envFilePath: string | null = null;
   let help = false;
+  let trace = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -69,20 +75,25 @@ function parseCliArgs(argv: string[]): {
       index += 1;
       continue;
     }
+    if (arg === '--trace') {
+      trace = true;
+      continue;
+    }
     throw new Error(`Unknown codex-gateway-server argument: ${arg}`);
   }
 
-  return { envFilePath, help };
+  return { envFilePath, help, trace };
 }
 
 function printHelp(): void {
   console.log([
-    'Usage: codex-gateway-server [--env-file <path>]',
+    'Usage: codex-gateway-server [--env-file <path>] [--trace]',
     '',
     'Internal-only launcher for the Codex Gateway local Responses adapter server.',
     '',
     'Options:',
     '  --env-file <path>  Load dotenv-style defaults before resolving provider env',
+    '  --trace            Emit structured trace events to stderr as NDJSON',
     '  -h, --help         Show this help message',
   ].join('\n'));
 }

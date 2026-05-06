@@ -88,6 +88,7 @@ Latest progress:
 - [x] LiteLLM-style usage aliases such as cache, reasoning, audio, and prediction token fields are now normalized into Responses usage details at the package boundary
 - [x] LiteLLM-inspired usage normalization now associates response usage with normalized model pricing metadata to expose estimated input, output, and total cost at the package boundary
 - [x] Package `/v1/models` output now includes a normalized `protocol` view that merges provider defaults with model overrides for tools, multimodal input, reasoning, compact support, structured output, and output-token limits
+- [x] Package-local trace mode now exposes optional request/response/retry/stream trace hooks, and the internal standalone launcher can emit those trace events as NDJSON to stderr
 - [x] `open-responses`-inspired package server coverage now locks `/models`, `/responses`, and `/responses/compact` as the primary Responses-first routes, while keeping `/v1/*` aliases for SDK compatibility
 - [x] `llm-rosetta`-inspired protocol-boundary rules now explicitly lock `openai-chat-compatible` to the current direct adapter path and defer Anthropic/Gemini-native targets behind a future IR gate
 
@@ -254,10 +255,11 @@ not bridge-side WeChat product work.
   The package now exposes a normalized `protocol` block alongside raw model
   capability data so bridge/UI introspection can rely on effective adapter
   behavior instead of reconstructing provider defaults elsewhere.
-- [ ] Add a package-local debug or trace mode for adapter transforms
-  Expose optional request/response/stream trace hooks so provider mapping
-  issues can be debugged without relying on CodexBridge runtime logging or
-  WeChat transport reproduction.
+- [x] Add a package-local debug or trace mode for adapter transforms
+  The package now exposes optional request/response/retry/stream trace hooks,
+  and the internal standalone launcher can emit trace events directly to
+  stderr as NDJSON without relying on CodexBridge runtime logging or WeChat
+  transport reproduction.
 
 ## Deferred / External Follow-up
 

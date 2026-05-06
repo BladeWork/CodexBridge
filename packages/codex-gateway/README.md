@@ -39,9 +39,26 @@ CODEX_GATEWAY_ENV_FILE=/path/to/codex-gateway.env \
 node packages/codex-gateway/dist/cli.js
 ```
 
+For package-local protocol tracing, enable:
+
+```bash
+node packages/codex-gateway/dist/cli.js --trace
+```
+
+or:
+
+```bash
+CODEX_GATEWAY_TRACE=1 \
+node packages/codex-gateway/dist/cli.js
+```
+
+This emits structured trace events to `stderr` as NDJSON without depending on
+CodexBridge runtime logging.
+
 Supported env knobs:
 
 - `CODEX_GATEWAY_ENV_FILE`
+- `CODEX_GATEWAY_TRACE`
 - `CODEX_GATEWAY_CAPABILITY_PRESET`
 - `CODEX_GATEWAY_API_KEY`
 - `CODEX_GATEWAY_BASE_URL`
@@ -83,6 +100,11 @@ metadata such as `contextWindow`, `pricing`, and model `capabilities`, and
 also exposes a normalized `protocol` block for effective adapter behavior such
 as tools, web search, multimodal input, reasoning support, compact support,
 structured output, and output-token limits.
+
+The adapter server also supports an optional package-local trace sink so
+request translation, response translation, retry behavior, and translated
+stream events can be debugged without reproducing issues through WeChat or
+CodexBridge runtime logs.
 
 It must not own bridge behavior:
 

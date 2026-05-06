@@ -15,6 +15,65 @@ import {
 } from '../capabilities/thinking_policy.js';
 
 type JsonRecord = Record<string, any>;
+type AdapterRoute = 'responses' | 'responses.compact';
+
+export type CodexGatewayTraceEvent =
+  | {
+    type: 'request.received';
+    route: AdapterRoute;
+    model: string;
+    stream: boolean;
+    request: JsonRecord;
+  }
+  | {
+    type: 'request.translated';
+    route: 'responses';
+    model: string;
+    stream: boolean;
+    request: JsonRecord;
+    upstreamRequest: JsonRecord;
+  }
+  | {
+    type: 'response.translated';
+    route: 'responses';
+    model: string;
+    stream: false;
+    response: JsonRecord;
+  }
+  | {
+    type: 'response.compaction_fallback';
+    route: 'responses.compact';
+    model: string;
+    reason: 'compact_not_supported';
+    response: JsonRecord;
+  }
+  | {
+    type: 'upstream.retry';
+    route: AdapterRoute;
+    attempt: number;
+    nextAttempt: number;
+    status: number | null;
+    reason: 'network' | 'status';
+    delayMs: number;
+  }
+  | {
+    type: 'upstream.error';
+    route: AdapterRoute;
+    status: number;
+    error: JsonRecord;
+  }
+  | {
+    type: 'stream.event';
+    route: 'responses';
+    event: JsonRecord;
+  }
+  | {
+    type: 'stream.completed';
+    route: 'responses';
+    eventCount: number;
+  };
+
+export type CodexGatewayTraceSink = (event: CodexGatewayTraceEvent) => void;
 
 export interface OpenAICompatibleResponsesAdapterServerOptions {
   apiKey: string;
@@ -29,6 +88,7 @@ export interface OpenAICompatibleResponsesAdapterServerOptions {
   providerCapabilities?: OpenAICompatibleProviderCapabilities | null;
   upstreamChatCompletionsPath?: string | null;
   ownedBy?: string | null;
+  traceSink?: CodexGatewayTraceSink | null;
 }
 
 const DEFAULT_UPSTREAM_BASE_URL = 'https://api.openai.com/v1';
@@ -61,6 +121,8 @@ export class OpenAICompatibleResponsesAdapterServer {
 
   private readonly ownedBy: string;
 
+  private readonly traceSink: CodexGatewayTraceSink | null;
+
   private server: http.Server | null;
 
   private startedUrl: string | null;
@@ -78,6 +140,7 @@ export class OpenAICompatibleResponsesAdapterServer {
     providerCapabilities = null,
     upstreamChatCompletionsPath = '/chat/completions',
     ownedBy = 'openai-compatible',
+    traceSink = null,
   }: OpenAICompatibleResponsesAdapterServerOptions) {
     const normalizedKey = normalizeString(apiKey);
     if (!normalizedKey) {
@@ -93,6 +156,7 @@ export class OpenAICompatibleResponsesAdapterServer {
       : null;
     this.upstreamChatCompletionsPath = normalizePath(upstreamChatCompletionsPath) || '/chat/completions';
     this.ownedBy = normalizeString(ownedBy) || this.providerKind;
+    this.traceSink = typeof traceSink === 'function' ? traceSink : null;
     this.models = normalizeModels(
       models,
       this.defaultModel,
@@ -188,16 +252,33 @@ export class OpenAICompatibleResponsesAdapterServer {
     response: ServerResponse,
     { compact = false }: { compact?: boolean } = {},
   ): Promise<void> {
+    const route: AdapterRoute = compact ? 'responses.compact' : 'responses';
+    const requestedModel = normalizeString(requestBody?.model) || this.defaultModel;
+    const stream = Boolean(requestBody?.stream);
+    this.emitTrace({
+      type: 'request.received',
+      route,
+      model: requestedModel,
+      stream,
+      request: requestBody,
+    });
     if (compact) {
       await this.handleCompactResponses(requestBody, response);
       return;
     }
-    const stream = Boolean(requestBody?.stream);
     const chatBody = responsesRequestToChatCompletions(requestBody, {
-      model: requestBody?.model ?? this.defaultModel,
+      model: requestedModel,
       stream,
       providerKind: this.providerKind,
       providerCapabilities: this.providerCapabilities,
+    });
+    this.emitTrace({
+      type: 'request.translated',
+      route: 'responses',
+      model: requestedModel,
+      stream,
+      request: requestBody,
+      upstreamRequest: chatBody,
     });
     if (stream) {
       chatBody.stream_options = {
@@ -216,16 +297,22 @@ export class OpenAICompatibleResponsesAdapterServer {
         },
         body: JSON.stringify(chatBody),
       },
+      'responses',
     );
     if (!upstream.response.ok) {
-      writeJson(response, upstream.response.status || 502, {
-        error: normalizeUpstreamError(
-          upstream.errorText ?? '',
-          this.providerName,
-          upstream.response.status,
-          upstream.response.headers,
-        ),
+      const error = normalizeUpstreamError(
+        upstream.errorText ?? '',
+        this.providerName,
+        upstream.response.status,
+        upstream.response.headers,
+      );
+      this.emitTrace({
+        type: 'upstream.error',
+        route: 'responses',
+        status: upstream.response.status || 502,
+        error,
       });
+      writeJson(response, upstream.response.status || 502, { error });
       return;
     }
     if (stream) {
@@ -237,11 +324,19 @@ export class OpenAICompatibleResponsesAdapterServer {
       this.models,
       normalizeString(requestBody?.model) || normalizeString(json?.model) || this.defaultModel,
     );
-    writeJson(response, 200, chatCompletionsResponseToResponses(json, {
+    const adaptedResponse = chatCompletionsResponseToResponses(json, {
       request: requestBody,
       providerCapabilities: this.providerCapabilities,
       modelMetadata,
-    }));
+    });
+    this.emitTrace({
+      type: 'response.translated',
+      route: 'responses',
+      model: requestedModel,
+      stream: false,
+      response: adaptedResponse,
+    });
+    writeJson(response, 200, adaptedResponse);
   }
 
   private async handleCompactResponses(requestBody: JsonRecord, response: ServerResponse): Promise<void> {
@@ -262,11 +357,19 @@ export class OpenAICompatibleResponsesAdapterServer {
         this.models,
         normalizeString(compactBody?.model) || this.defaultModel,
       );
-      writeJson(response, 200, responsesRequestToCompactionResponse(compactBody, {
+      const compactResponse = responsesRequestToCompactionResponse(compactBody, {
         request: compactBody,
         providerCapabilities: this.providerCapabilities,
         modelMetadata,
-      }));
+      });
+      this.emitTrace({
+        type: 'response.compaction_fallback',
+        route: 'responses.compact',
+        model: normalizeString(compactBody?.model) || this.defaultModel,
+        reason: 'compact_not_supported',
+        response: compactResponse,
+      });
+      writeJson(response, 200, compactResponse);
       return;
     }
 
@@ -282,16 +385,22 @@ export class OpenAICompatibleResponsesAdapterServer {
         },
         body: JSON.stringify(compactBody),
       },
+      'responses.compact',
     );
     if (!upstream.response.ok) {
-      writeJson(response, upstream.response.status || 502, {
-        error: normalizeUpstreamError(
-          upstream.errorText ?? '',
-          this.providerName,
-          upstream.response.status,
-          upstream.response.headers,
-        ),
+      const error = normalizeUpstreamError(
+        upstream.errorText ?? '',
+        this.providerName,
+        upstream.response.status,
+        upstream.response.headers,
+      );
+      this.emitTrace({
+        type: 'upstream.error',
+        route: 'responses.compact',
+        status: upstream.response.status || 502,
+        error,
       });
+      writeJson(response, upstream.response.status || 502, { error });
       return;
     }
     const text = await upstream.response.text();
@@ -301,7 +410,11 @@ export class OpenAICompatibleResponsesAdapterServer {
     response.end(text);
   }
 
-  private async fetchUpstreamWithRetry(url: string, init: RequestInit): Promise<{
+  private async fetchUpstreamWithRetry(
+    url: string,
+    init: RequestInit,
+    route: AdapterRoute,
+  ): Promise<{
     response: Response;
     errorText: string | null;
   }> {
@@ -314,7 +427,17 @@ export class OpenAICompatibleResponsesAdapterServer {
       } catch (error) {
         lastError = error;
         if (attempt < retry.maxAttempts && retry.retryNetworkErrors) {
-          await sleep(resolveRetryDelayMs(null, '', attempt, retry));
+          const delayMs = resolveRetryDelayMs(null, '', attempt, retry);
+          this.emitTrace({
+            type: 'upstream.retry',
+            route,
+            attempt,
+            nextAttempt: attempt + 1,
+            status: null,
+            reason: 'network',
+            delayMs,
+          });
+          await sleep(delayMs);
           continue;
         }
         throw error;
@@ -326,7 +449,17 @@ export class OpenAICompatibleResponsesAdapterServer {
         };
       }
       const text = await upstream.text().catch(() => '');
-      await sleep(resolveRetryDelayMs(upstream.headers, text, attempt, retry));
+      const delayMs = resolveRetryDelayMs(upstream.headers, text, attempt, retry);
+      this.emitTrace({
+        type: 'upstream.retry',
+        route,
+        attempt,
+        nextAttempt: attempt + 1,
+        status: upstream.status,
+        reason: 'status',
+        delayMs,
+      });
+      await sleep(delayMs);
     }
     throw lastError instanceof Error ? lastError : new Error(String(lastError ?? 'OpenAI-compatible upstream retry failed.'));
   }
@@ -350,6 +483,7 @@ export class OpenAICompatibleResponsesAdapterServer {
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
     });
+    let eventCount = 0;
     for await (const event of translateChatCompletionsSseStreamToResponsesSse(
       readSseDataLines(upstream.body),
       {
@@ -359,11 +493,35 @@ export class OpenAICompatibleResponsesAdapterServer {
           this.models,
           normalizeString(requestBody?.model) || this.defaultModel,
         ),
+        traceEvent: (traceEvent) => {
+          eventCount += 1;
+          this.emitTrace({
+            type: 'stream.event',
+            route: 'responses',
+            event: traceEvent,
+          });
+        },
       },
     )) {
       response.write(event);
     }
+    this.emitTrace({
+      type: 'stream.completed',
+      route: 'responses',
+      eventCount,
+    });
     response.end();
+  }
+
+  private emitTrace(event: CodexGatewayTraceEvent): void {
+    if (!this.traceSink) {
+      return;
+    }
+    try {
+      this.traceSink(event);
+    } catch {
+      // Ignore trace sink failures so protocol serving stays unaffected.
+    }
   }
 }
 

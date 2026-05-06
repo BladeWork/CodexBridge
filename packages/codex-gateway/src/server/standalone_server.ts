@@ -12,6 +12,7 @@ import {
   type OpenAICompatibleProviderCapabilities,
 } from '../capabilities/thinking_policy.js';
 import {
+  type CodexGatewayTraceSink,
   OpenAICompatibleResponsesAdapterServer,
   type OpenAICompatibleResponsesAdapterServerOptions,
 } from './responses_adapter_server.js';
@@ -21,6 +22,7 @@ type EnvRecord = Record<string, string | undefined>;
 export interface CodexGatewayStandaloneServerConfig extends OpenAICompatibleResponsesAdapterServerOptions {
   presetId: OpenAICompatibleCapabilityPresetId;
   modelCatalogSource: 'preset' | 'json' | 'path';
+  traceMode: 'off' | 'stderr-json';
 }
 
 export function createCodexGatewayStandaloneServerConfigFromEnv(
@@ -63,6 +65,7 @@ export function createCodexGatewayStandaloneServerConfigFromEnv(
   const port = normalizePort(resolvedEnv.CODEX_GATEWAY_PORT);
   const upstreamChatCompletionsPath = normalizeString(resolvedEnv.CODEX_GATEWAY_UPSTREAM_CHAT_PATH)
     || preset.upstreamChatCompletionsPath;
+  const traceMode = resolveStandaloneTraceMode(resolvedEnv);
 
   const capabilityOverrides = parseOptionalJson(
     resolvedEnv.CODEX_GATEWAY_CAPABILITY_OVERRIDES_JSON,
@@ -113,6 +116,7 @@ export function createCodexGatewayStandaloneServerConfigFromEnv(
   return {
     presetId: preset.id,
     modelCatalogSource,
+    traceMode,
     apiKey,
     upstreamBaseUrl,
     defaultModel,
@@ -168,7 +172,31 @@ export function createCodexGatewayStandaloneServerFromEnv(
   const config = createCodexGatewayStandaloneServerConfigFromEnv(env);
   return {
     config,
-    server: new OpenAICompatibleResponsesAdapterServer(config),
+    server: new OpenAICompatibleResponsesAdapterServer({
+      ...config,
+      traceSink: createStandaloneTraceSink(config.traceMode),
+    }),
+  };
+}
+
+function resolveStandaloneTraceMode(env: EnvRecord): CodexGatewayStandaloneServerConfig['traceMode'] {
+  const normalized = normalizeString(env.CODEX_GATEWAY_TRACE).toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'stderr-json'
+    ? 'stderr-json'
+    : 'off';
+}
+
+function createStandaloneTraceSink(
+  traceMode: CodexGatewayStandaloneServerConfig['traceMode'],
+): CodexGatewayTraceSink | null {
+  if (traceMode !== 'stderr-json') {
+    return null;
+  }
+  return (event) => {
+    process.stderr.write(`${JSON.stringify({
+      source: 'codex-gateway-trace',
+      ...event,
+    })}\n`);
   };
 }
 

@@ -125,3 +125,13 @@ test('standalone server config loads provider defaults from CODEX_GATEWAY_ENV_FI
   assert.equal(config.apiKey, 'file-key');
   assert.equal(config.defaultModel, 'openai/gpt-4.1-mini');
 });
+
+test('standalone server config enables stderr-json trace mode from env', () => {
+  const config = createCodexGatewayStandaloneServerConfigFromEnv({
+    CODEX_GATEWAY_CAPABILITY_PRESET: 'openrouter',
+    OPENROUTER_API_KEY: 'trace-key',
+    CODEX_GATEWAY_TRACE: 'true',
+  });
+
+  assert.equal(config.traceMode, 'stderr-json');
+});

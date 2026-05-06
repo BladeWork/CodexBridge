@@ -76,6 +76,57 @@ test('adapter server is available from the package boundary', async () => {
   }
 });
 
+test('adapter server trace sink captures request translation and non-streaming response mapping', async () => {
+  const events: any[] = [];
+  const server = new OpenAICompatibleResponsesAdapterServer({
+    apiKey: 'test-key',
+    traceSink: (event) => {
+      events.push(JSON.parse(JSON.stringify(event)));
+    },
+    fetchImpl: (async () => new Response(JSON.stringify({
+      id: 'chatcmpl_trace_nonstream',
+      created: 1_700_000_210,
+      model: 'trace-model',
+      choices: [{
+        message: {
+          content: 'trace answer',
+        },
+      }],
+    }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })) as typeof fetch,
+  });
+
+  await server.start();
+  try {
+    const response = await fetch(`${server.baseUrl}/responses`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'trace-model',
+        input: 'trace this request',
+      }),
+    });
+    const body = await response.json() as any;
+    assert.equal(response.status, 200);
+    assert.equal(body.output[0].content[0].text, 'trace answer');
+    assert.deepEqual(events.map((event) => event.type), [
+      'request.received',
+      'request.translated',
+      'response.translated',
+    ]);
+    assert.equal(events[0].route, 'responses');
+    assert.equal(events[0].model, 'trace-model');
+    assert.equal(events[1].upstreamRequest.model, 'trace-model');
+    assert.equal(events[2].response.output[0].content[0].text, 'trace answer');
+  } finally {
+    await server.stop();
+  }
+});
+
 test('adapter server exposes model metadata from package boundary', async () => {
   const server = new OpenAICompatibleResponsesAdapterServer({
     apiKey: 'test-key',
@@ -482,6 +533,65 @@ test('adapter server streams codex-proxy style event ordering and keeps previous
     assert.equal(completedEvent.response.previous_response_id, 'resp_parent_stream_1');
     assert.equal(completedEvent.response.output[1].type, 'function_call');
     assert.equal(completedEvent.response.output[1].arguments, '{"q":"x"}');
+  } finally {
+    await server.stop();
+  }
+});
+
+test('adapter server trace sink captures translated streaming events', async () => {
+  const events: any[] = [];
+  const server = new OpenAICompatibleResponsesAdapterServer({
+    apiKey: 'test-key',
+    traceSink: (event) => {
+      events.push(JSON.parse(JSON.stringify(event)));
+    },
+    fetchImpl: (async () => createEventStreamResponse([
+      {
+        id: 'chatcmpl_trace_stream',
+        created: 1_700_000_220,
+        model: 'trace-stream-model',
+        choices: [{
+          index: 0,
+          delta: {
+            content: 'hello',
+          },
+        }],
+      },
+      {
+        choices: [{
+          index: 0,
+          delta: {},
+          finish_reason: 'stop',
+        }],
+        usage: {
+          prompt_tokens: 2,
+          completion_tokens: 1,
+          total_tokens: 3,
+        },
+      },
+    ])) as typeof fetch,
+  });
+
+  await server.start();
+  try {
+    const response = await fetch(`${server.baseUrl}/v1/responses`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'trace-stream-model',
+        input: 'stream this request',
+        stream: true,
+      }),
+    });
+    const body = await response.text();
+    assert.equal(response.status, 200);
+    assert.equal(body.includes('response.completed'), true);
+    assert.equal(events[0].type, 'request.received');
+    assert.equal(events[1].type, 'request.translated');
+    assert.equal(events.some((event) => event.type === 'stream.event' && event.event.type === 'response.output_text.delta'), true);
+    const completed = events.find((event) => event.type === 'stream.completed');
+    assert.equal(Boolean(completed), true);
+    assert.equal(completed.eventCount >= 3, true);
   } finally {
     await server.stop();
   }
