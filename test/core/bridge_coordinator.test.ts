@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
+  AUTO_COMMAND_SKILL_ACTIONS,
   resolveOpenAIAgentRuntimeConfig,
   AGENT_COMMAND_SKILL_ACTIONS,
   INSTRUCTIONS_COMMAND_SKILL_ACTIONS,
@@ -7778,6 +7779,141 @@ test('/agent show, retry, rename, stop, and delete manage queued jobs', async ()
   }
 });
 
+test('/agent runAgentJob retries after an interrupted provider turn and completes on the next attempt', async () => {
+  const originalOpenAiKey = process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  try {
+    const { runtime, openai } = makeRuntime({ defaultCwd: '/repo' });
+    await runtime.services.bridgeCoordinator.handleInboundEvent({
+      platform: 'weixin',
+      externalScopeId: 'wx-agent-interrupted-1',
+      text: '/agent 检查当前项目测试并修复失败项',
+    });
+    await runtime.services.bridgeCoordinator.handleInboundEvent({
+      platform: 'weixin',
+      externalScopeId: 'wx-agent-interrupted-1',
+      text: '/agent confirm',
+    });
+    const [job] = runtime.services.agentJobs.listForScope({
+      platform: 'weixin',
+      externalScopeId: 'wx-agent-interrupted-1',
+    });
+    let executionAttempts = 0;
+    const originalStartTurn = openai.startTurn.bind(openai);
+    openai.startTurn = async (params: any) => {
+      const inputText = String(params?.inputText ?? '');
+      if (inputText.includes('你正在执行 CodexBridge 后台 Agent 任务。')) {
+        executionAttempts += 1;
+        const turnId = `${params.bridgeSession.codexThreadId}-agent-attempt-${executionAttempts}`;
+        await params.onTurnStarted?.({
+          turnId,
+          threadId: params.bridgeSession.codexThreadId,
+        });
+        if (executionAttempts === 1) {
+          return {
+            outputText: '第一次执行中断。',
+            outputState: 'interrupted',
+            turnId,
+            threadId: params.bridgeSession.codexThreadId,
+            title: params.bridgeSession.title,
+          };
+        }
+        return {
+          outputText: '第二次执行完成，基础检查通过。',
+          outputState: 'complete',
+          turnId,
+          threadId: params.bridgeSession.codexThreadId,
+          title: params.bridgeSession.title,
+        };
+      }
+      return originalStartTurn(params);
+    };
+
+    const response = await runtime.services.bridgeCoordinator.runAgentJob(job);
+    const responseText = response.messages.map((message) => message.text).join('\n');
+    assert.match(responseText, /Agent 任务已完成/);
+    assert.match(responseText, /基础检查通过/);
+    assert.equal(executionAttempts, 2);
+
+    const completed = runtime.services.agentJobs.getById(job.id);
+    assert.equal(completed.status, 'completed');
+    assert.equal(completed.attemptCount, 2);
+  } finally {
+    if (originalOpenAiKey === undefined) {
+      delete process.env.OPENAI_API_KEY;
+    } else {
+      process.env.OPENAI_API_KEY = originalOpenAiKey;
+    }
+  }
+});
+
+test('/agent runAgentJob forwards provider approval requests to the supplied approval callback', async () => {
+  const originalOpenAiKey = process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  try {
+    const { runtime, openai } = makeRuntime({ defaultCwd: '/repo' });
+    await runtime.services.bridgeCoordinator.handleInboundEvent({
+      platform: 'weixin',
+      externalScopeId: 'wx-agent-approval-1',
+      text: '/agent 检查当前项目测试并修复失败项',
+    });
+    await runtime.services.bridgeCoordinator.handleInboundEvent({
+      platform: 'weixin',
+      externalScopeId: 'wx-agent-approval-1',
+      text: '/agent confirm',
+    });
+    const [job] = runtime.services.agentJobs.listForScope({
+      platform: 'weixin',
+      externalScopeId: 'wx-agent-approval-1',
+    });
+    const approvalRequests: any[] = [];
+    const originalStartTurn = openai.startTurn.bind(openai);
+    openai.startTurn = async (params: any) => {
+      const inputText = String(params?.inputText ?? '');
+      if (inputText.includes('你正在执行 CodexBridge 后台 Agent 任务。')) {
+        const turnId = `${params.bridgeSession.codexThreadId}-agent-approval-turn-1`;
+        await params.onTurnStarted?.({
+          turnId,
+          threadId: params.bridgeSession.codexThreadId,
+        });
+        await params.onApprovalRequest?.({
+          requestId: 'approval-agent-1',
+          command: 'npm test',
+          reason: 'Need to run the requested verification command.',
+          options: [
+            { index: 1, label: 'Approve' },
+            { index: 2, label: 'Deny' },
+          ],
+        });
+        return {
+          outputText: '审批后执行完成，基础检查通过。',
+          outputState: 'complete',
+          turnId,
+          threadId: params.bridgeSession.codexThreadId,
+          title: params.bridgeSession.title,
+        };
+      }
+      return originalStartTurn(params);
+    };
+
+    const response = await runtime.services.bridgeCoordinator.runAgentJob(job, {
+      onApprovalRequest: (request) => {
+        approvalRequests.push(request);
+      },
+    });
+    const responseText = response.messages.map((message) => message.text).join('\n');
+    assert.match(responseText, /Agent 任务已完成/);
+    assert.equal(approvalRequests.length, 1);
+    assert.equal(approvalRequests[0]?.requestId, 'approval-agent-1');
+  } finally {
+    if (originalOpenAiKey === undefined) {
+      delete process.env.OPENAI_API_KEY;
+    } else {
+      process.env.OPENAI_API_KEY = originalOpenAiKey;
+    }
+  }
+});
+
 test('resolveOpenAIAgentRuntimeConfig supports OpenAI-compatible MiniMax settings', () => {
   const config = resolveOpenAIAgentRuntimeConfig({
     CODEXBRIDGE_AGENT_API_KEY: 'mini-key',
@@ -10101,6 +10237,49 @@ test('/auto rename and /auto del update and remove automation jobs', async () =>
   assert.equal(listed.messages[0]?.text ?? '', '自动化任务 | 0 项');
 });
 
+test('/auto pause and /auto resume update automation job status', async () => {
+  const { runtime } = makeRuntime({
+    defaultCwd: '/tmp/codexbridge-auto-pause-resume',
+  });
+
+  await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-user-auto-pause-resume',
+    text: '/auto add daily 09:00 | 每天整理昨天的提交摘要',
+  });
+  await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-user-auto-pause-resume',
+    text: '/auto confirm',
+  });
+
+  const paused = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-user-auto-pause-resume',
+    text: '/auto pause 1',
+  });
+  assert.match(paused.messages[0]?.text ?? '', /自动化任务已暂停/);
+
+  let [job] = runtime.services.automationJobs.listForScope({
+    platform: 'weixin',
+    externalScopeId: 'wx-user-auto-pause-resume',
+  });
+  assert.equal(job.status, 'paused');
+
+  const resumed = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-user-auto-pause-resume',
+    text: '/auto resume 1',
+  });
+  assert.match(resumed.messages[0]?.text ?? '', /自动化任务已恢复/);
+
+  [job] = runtime.services.automationJobs.listForScope({
+    platform: 'weixin',
+    externalScopeId: 'wx-user-auto-pause-resume',
+  });
+  assert.equal(job.status, 'active');
+});
+
 test('/auto natural language proposes deleting a matching job before confirm', async () => {
   const { runtime, openai } = makeRuntime({
     defaultCwd: '/tmp/codexbridge-auto-natural-delete',
@@ -10525,6 +10704,28 @@ test('AGENT_COMMAND_SKILL_ACTIONS matches actions declared in docs/command-skill
     missingInDoc,
     [],
     `Actions in AGENT_COMMAND_SKILL_ACTIONS but missing from agent.md: ${missingInDoc.join(', ')}`,
+  );
+});
+
+test('AUTO_COMMAND_SKILL_ACTIONS matches actions declared in docs/command-skills/auto.md', () => {
+  const docPath = path.resolve('docs/command-skills/auto.md');
+  const markdown = fs.readFileSync(docPath, 'utf-8');
+  const inlineActions = extractMarkdownInlineActions(markdown);
+
+  assert.ok(inlineActions.size > 0, 'should extract at least one action from auto.md');
+
+  const missingInCode = [...inlineActions].filter((a) => !AUTO_COMMAND_SKILL_ACTIONS.has(a as any));
+  const missingInDoc = [...AUTO_COMMAND_SKILL_ACTIONS].filter((a) => !inlineActions.has(a));
+
+  assert.deepEqual(
+    missingInCode,
+    [],
+    `Actions declared in auto.md but missing from AUTO_COMMAND_SKILL_ACTIONS: ${missingInCode.join(', ')}`,
+  );
+  assert.deepEqual(
+    missingInDoc,
+    [],
+    `Actions in AUTO_COMMAND_SKILL_ACTIONS but missing from auto.md: ${missingInDoc.join(', ')}`,
   );
 });
 

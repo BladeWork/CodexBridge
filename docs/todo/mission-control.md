@@ -164,13 +164,36 @@ This backlog follows the route below:
 
 Before moving ownership into the package:
 
-- [ ] Record the current `/agent` public behavior that users already rely on
-- [ ] Lock current `/agent` migration-protection tests covering:
+- [x] Record the current `/agent` public behavior that users already rely on
+- [x] Lock current `/agent` migration-protection tests covering:
   - create / confirm / cancel
   - list / show / stop / retry / result
   - approval + interrupted-turn handling
   - artifact/result delivery
-- [ ] Record the current `/auto` behavior that should later delegate into mission runs
+- [x] Record the current `/auto` behavior that should later delegate into mission runs
+
+Phase 0 source-of-truth inventory:
+
+- `/agent`
+  - public command contract: `docs/command-skills/agent.md`
+  - migration-protection tests: `test/core/bridge_coordinator.test.ts`
+    - `/agent drafts, confirms, runs, verifies, and records a background job`
+    - `/agent stores generated attachments and can resend them`
+    - `/agent show, retry, rename, stop, and delete manage queued jobs`
+    - `/agent runAgentJob retries after an interrupted provider turn and completes on the next attempt`
+    - `/agent runAgentJob forwards provider approval requests to the supplied approval callback`
+- `/auto`
+  - public command contract: `docs/command-skills/auto.md`
+  - migration-protection tests: `test/core/bridge_coordinator.test.ts`
+    - `/auto add creates a draft first and /auto confirm persists the standalone automation job`
+    - `/auto add natural language produces a draft through provider normalization before /auto confirm`
+    - `/auto edit updates the pending automation draft instead of replacing it`
+    - `/auto rename and /auto del update and remove automation jobs`
+    - `/auto pause and /auto resume update automation job status`
+    - `/auto show without args opens the only automation job and shows a future next-run time`
+    - `/auto show without args asks for an index when multiple automation jobs exist`
+    - `/auto add thread requires an existing bound session`
+    - `/auto cancel clears the pending automation draft`
 
 ## Phase 1: Domain and Persistence
 

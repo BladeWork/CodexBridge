@@ -265,6 +265,39 @@ Main missing abstraction:
 - There is no unified `Mission` model that can represent manual agent jobs,
   scheduled automation runs, tracker issues, and future desktop/browser tasks.
 
+## V0 Migration Baseline Sources
+
+Before `/agent` and `/auto` delegate into Mission Control, the existing
+user-visible contract should be treated as migration-protected.
+
+Current baseline sources:
+
+- `/agent` semantic command contract:
+  - `docs/command-skills/agent.md`
+- `/agent` migration-protection tests:
+  - `test/core/bridge_coordinator.test.ts`
+    - `/agent drafts, confirms, runs, verifies, and records a background job`
+    - `/agent stores generated attachments and can resend them`
+    - `/agent show, retry, rename, stop, and delete manage queued jobs`
+    - `/agent runAgentJob retries after an interrupted provider turn and completes on the next attempt`
+    - `/agent runAgentJob forwards provider approval requests to the supplied approval callback`
+- `/auto` semantic command contract:
+  - `docs/command-skills/auto.md`
+- `/auto` migration-protection tests:
+  - `test/core/bridge_coordinator.test.ts`
+    - `/auto add creates a draft first and /auto confirm persists the standalone automation job`
+    - `/auto add natural language produces a draft through provider normalization before /auto confirm`
+    - `/auto edit updates the pending automation draft instead of replacing it`
+    - `/auto rename and /auto del update and remove automation jobs`
+    - `/auto pause and /auto resume update automation job status`
+    - `/auto show without args opens the only automation job and shows a future next-run time`
+    - `/auto show without args asks for an index when multiple automation jobs exist`
+    - `/auto add thread requires an existing bound session`
+    - `/auto cancel clears the pending automation draft`
+
+Mission Control should preserve these contracts while replacing the runtime
+behind them.
+
 ## Product Shape
 
 Mission Control should be developed **inside** the CodexBridge repository first,

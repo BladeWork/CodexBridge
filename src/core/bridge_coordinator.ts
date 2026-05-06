@@ -112,6 +112,21 @@ export const AGENT_COMMAND_SKILL_ACTIONS = new Set([
   'local_only',
 ] as const);
 
+export const AUTO_COMMAND_SKILL_ACTIONS = new Set([
+  'create_draft',
+  'update_pending_draft',
+  'propose_update_job',
+  'propose_delete_job',
+  'propose_pause_job',
+  'propose_resume_job',
+  'propose_rename_job',
+  'query_jobs',
+  'show_job',
+  'clarify',
+  'reject',
+  'local_only',
+] as const);
+
 export const REVIEW_COMMAND_SKILL_ACTIONS = new Set([
   'run_review',
   'clarify',
@@ -14225,23 +14240,9 @@ function parseAutomationCommandSkillResult(value: unknown): AutomationCommandSki
 
 function normalizeAutomationCommandSkillAction(value: unknown): AutomationCommandSkillResult['action'] | null {
   const normalized = compactWhitespace(value).toLowerCase();
-  switch (normalized) {
-    case 'create_draft':
-    case 'update_pending_draft':
-    case 'propose_update_job':
-    case 'propose_delete_job':
-    case 'propose_pause_job':
-    case 'propose_resume_job':
-    case 'propose_rename_job':
-    case 'query_jobs':
-    case 'show_job':
-    case 'clarify':
-    case 'reject':
-    case 'local_only':
-      return normalized;
-    default:
-      return null;
-  }
+  return AUTO_COMMAND_SKILL_ACTIONS.has(normalized as AutomationCommandSkillResult['action'])
+    ? normalized as AutomationCommandSkillResult['action']
+    : null;
 }
 
 function parseAutomationOperationTarget(value: unknown): AutomationOperationTarget | null {
