@@ -1040,7 +1040,7 @@ function normalizeTitle(title: string, type: AssistantRecordType): string {
     case 'log':
       return '未命名日志';
     case 'todo':
-      return '未命名代办';
+      return '未命名待办';
     case 'reminder':
       return '未命名提醒';
     case 'note':

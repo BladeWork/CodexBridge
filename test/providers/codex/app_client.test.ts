@@ -585,6 +585,34 @@ test('CodexAppClient startServer enables image generation when spawning app-serv
   assert.match(String(calls[0]?.args?.[4]), /^ws:\/\/127\.0\.0\.1:\d+$/);
 });
 
+test('CodexAppClient startServer prepends configured Codex CLI args', async () => {
+  const calls = [];
+  const child = new EventEmitter() as EventEmitter & {
+    stderr: EventEmitter;
+    exitCode: number | null;
+  };
+  child.stderr = new EventEmitter();
+  child.exitCode = 0;
+
+  const client = new CodexAppClient({
+    codexCliBin: 'codex',
+    codexCliArgs: ['-c', 'model_provider="deepseek"'],
+    spawnImpl: ((command, args, options) => {
+      calls.push({ command, args, options });
+      return child as any;
+    }) as any,
+  });
+
+  client.connectWebSocket = async () => {
+    client.connected = true;
+  };
+  client.initialize = async () => {};
+
+  await client.startServer();
+
+  assert.deepEqual(calls[0]?.args?.slice(0, 3), ['-c', 'model_provider="deepseek"', 'app-server']);
+});
+
 test('CodexAppClient startServer wraps Windows cmd launchers through cmd.exe', async () => {
   const calls = [];
   const child = new EventEmitter() as EventEmitter & {

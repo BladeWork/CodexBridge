@@ -24,7 +24,7 @@
     "src/platforms/weixin/poller.ts",
     "src/platforms/telegram/plugin.ts",
     "src/providers/codex/config.ts",
-    "src/providers/minimax/plugin.ts",
+    "src/providers/openai_compatible/plugin.ts",
     "src/providers/openai_native/plugin.ts",
     "src/store/file_json/create_file_json_repositories.ts",
     "src/store/file_json/file_json_bridge_session_repository.ts",

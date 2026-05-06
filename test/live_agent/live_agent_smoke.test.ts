@@ -133,7 +133,7 @@ test('live-agent assistant record classification stays structured and strips met
 
   const text = result.messages.map((message) => message.text ?? '').join('\n');
   assert.match(text, /助理记录待确认/);
-  assert.match(text, /类型：代办/);
+  assert.match(text, /类型：待办/);
   assert.doesNotMatch(text, /看看放哪里比较合适/);
   assert.doesNotMatch(text, /我之后还得记一下/);
 

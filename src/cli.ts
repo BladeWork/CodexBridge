@@ -14,7 +14,7 @@ import { createFileJsonRepositories } from './store/file_json/create_file_json_r
 import { loadCodexProfilesFromEnv } from './providers/codex/config.js';
 import { CodexAccountManager } from './providers/codex/account_manager.js';
 import { OpenAINativeProviderPlugin } from './providers/openai_native/plugin.js';
-import { MiniMaxViaCLIProxyProviderPlugin } from './providers/minimax/plugin.js';
+import { OpenAICompatibleProviderPlugin } from './providers/openai_compatible/plugin.js';
 import { WeixinBridgeRuntime } from './runtime/weixin_bridge_runtime.js';
 import { createI18n } from './i18n/index.js';
 
@@ -183,7 +183,7 @@ async function runWeixinServe(args: string[]) {
     ],
     providerPlugins: [
       new OpenAINativeProviderPlugin(),
-      new MiniMaxViaCLIProxyProviderPlugin(),
+      new OpenAICompatibleProviderPlugin(),
     ],
     providerProfiles: codexProfiles.profiles,
     defaultProviderProfileId: codexProfiles.defaultProviderProfileId,
@@ -260,7 +260,7 @@ async function runCodexCleanupInternalThreads(args: string[]) {
   const runtime = createCodexBridgeRuntime({
     providerPlugins: [
       new OpenAINativeProviderPlugin(),
-      new MiniMaxViaCLIProxyProviderPlugin(),
+      new OpenAICompatibleProviderPlugin(),
     ],
     providerProfiles: codexProfiles.profiles,
     defaultProviderProfileId: codexProfiles.defaultProviderProfileId,

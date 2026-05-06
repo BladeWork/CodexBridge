@@ -279,6 +279,7 @@ interface ProgressState {
 
 interface CodexAppClientOptions {
   codexCliBin: string;
+  codexCliArgs?: string[];
   launchCommand?: string | null;
   autolaunch?: boolean;
   modelCatalog?: CodexModelInfo[];
@@ -308,6 +309,8 @@ export type CodexTurnInput = CodexTextTurnInput | CodexLocalImageTurnInput;
 
 export class CodexAppClient extends EventEmitter {
   codexCliBin: string;
+
+  codexCliArgs: string[];
 
   launchCommand: string | null;
 
@@ -357,6 +360,7 @@ export class CodexAppClient extends EventEmitter {
 
   constructor({
     codexCliBin,
+    codexCliArgs = [],
     launchCommand = null,
     autolaunch = false,
     modelCatalog = [],
@@ -376,6 +380,7 @@ export class CodexAppClient extends EventEmitter {
   }: CodexAppClientOptions) {
     super();
     this.codexCliBin = codexCliBin;
+    this.codexCliArgs = normalizeStringList(codexCliArgs);
     this.launchCommand = launchCommand;
     this.autolaunch = autolaunch;
     this.modelCatalog = modelCatalog;
@@ -968,7 +973,7 @@ export class CodexAppClient extends EventEmitter {
     const featureArgs = this.enabledFeatures.flatMap((feature) => ['--enable', feature]);
     const launchSpec = createCodexAppServerLaunchSpec({
       command: this.codexCliBin,
-      args: ['app-server', ...featureArgs, '--listen', `ws://127.0.0.1:${this.port}`],
+      args: [...this.codexCliArgs, 'app-server', ...featureArgs, '--listen', `ws://127.0.0.1:${this.port}`],
       platform: this.platform,
     });
     try {
@@ -993,6 +998,7 @@ export class CodexAppClient extends EventEmitter {
       spawnCommand: launchSpec.command,
       spawnArgs: launchSpec.args,
       port: this.port,
+      codexCliArgs: this.codexCliArgs,
       enabledFeatures: this.enabledFeatures,
       autolaunch: this.autolaunch,
       launchCommand: this.launchCommand,

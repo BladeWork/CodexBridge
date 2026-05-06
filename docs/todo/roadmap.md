@@ -21,6 +21,13 @@ Already landed and no longer part of the active backlog:
 - Thread cleanup and organization flows such as archive/restore and pin/unpin
 - Native-ish reconnect, retry, approval, and attachment delivery hardening
 
+Architecture references now available:
+
+- `reference/symphony` tracks OpenAI Symphony as the orchestration reference.
+- `docs/architecture/codex-mission-control.md` defines how CodexBridge should
+  adapt Symphony-style workflow, workspace, workpad, retry, and status concepts
+  without replacing the chat-first WeChat control surface.
+
 Important clarification:
 
 - A separate `/resume` command is **not** a current priority because bridge UX
@@ -59,6 +66,16 @@ Codex output quality over adding more bridge-only command surface area.
 - [ ] Design a companion-based computer-use workflow for desktop GUI tasks with explicit approvals and app allowlists
 - [ ] Decide whether these desktop-native abilities belong in CodexBridge itself or in a separate local companion service
 
+### P2: Codex Mission Control
+
+- [ ] Treat `/agent` as the Mission Control v0 surface instead of adding a new `/mission` command too early
+- [ ] Add `.codexbridge/mission/WORKFLOW.md` loading with YAML front matter plus prompt body, using Symphony's workflow-contract pattern
+- [ ] Add a persistent mission workpad to background jobs so `/agent show` can expose plan, acceptance criteria, validation, notes, blockers, and final handoff
+- [ ] Add workspace isolation for code-changing long-running jobs under `~/.codexbridge/mission/workspaces/<missionId>/`
+- [ ] Add a bounded runner loop for mission jobs: run, verify, repair/retry, block or complete
+- [ ] Keep WeChat as the notification and control entrypoint while allowing future GitHub/Linear issue sources
+- [ ] Keep Symphony as a reference implementation only; do not vendor its Elixir runtime into CodexBridge
+
 ### Guardrail
 
 - [ ] Do not prioritize new bridge-only slash commands ahead of high-value native Codex parity work unless the native layer is unavailable
@@ -76,12 +93,26 @@ still a later-phase item.
 
 ## Later Direction: Additional Codex-Compatible Providers
 
-The provider wrappers exist, but non-OpenAI backends still need actual runtime
-integration.
+The generic OpenAI-compatible Responses adapter is now the preferred bridge
+path for non-OpenAI providers that expose Chat Completions-shaped APIs. It
+covers compact fallback, SSE tool-call repair, CLIProxyAPI-style WebSocket
+transcript repair primitives, thinking policy, payload compatibility, error
+mapping, SSE framing, usage fallback, multimodal capability flags, and model
+capability metadata.
 
-- [ ] Implement the MiniMax via CLIProxyAPI runtime path
-- [ ] Validate provider-specific model catalogs, defaults, and usage reporting
+- [x] Add generic OpenAI-compatible Responses adapter primitives
+- [x] Add configuration-only OpenAI-compatible provider profile loader
+- [x] Move DeepSeek and MiniMax onto the generic `openai-compatible` provider path
+- [x] Port CLIProxyAPI-style model capability catalog for Codex, DeepSeek, MiniMax, Qwen, iFlow, Kimi, OpenRouter, Gemini/AI Studio/Vertex, Claude, and Antigravity model families
+- [x] Convert model differences into capability/payload/thinking rules instead of dedicated provider plugins
+- [x] Add generic translator repairs for MiniMax consecutive tool calls, iFlow boolean thinking flags, and Kimi upstream model alias rewrite
+- [x] Add gated live-provider smoke tests for DeepSeek, MiniMax, Qwen, and OpenRouter
+- [x] Validate DeepSeek against the real upstream API through the local Responses adapter
+- [x] Port CLIProxyAPI WebSocket transcript/tool-call repair into a tested local module
+- [ ] Validate MiniMax, Qwen, and OpenRouter against real upstream APIs when credentials are available
+- [ ] Validate provider-specific catalogs, defaults, and real usage reporting against live providers
 - [ ] Verify provider switching boundaries under real runtime conditions
+- [ ] Keep runtime WebSocket disabled until the adapter server has a real upgrade handler; the repair logic is now ready for that future path
 
 ## Engineering Hardening
 

@@ -13,6 +13,10 @@ export class InMemoryProviderProfileRepository implements ProviderProfileReposit
     return profile;
   }
 
+  delete(id: string): void {
+    this.records.delete(id);
+  }
+
   get(id: string): ProviderProfile | null {
     return this.records.get(id) ?? null;
   }

@@ -33,7 +33,7 @@ export const PLATFORM_IDS = Object.freeze({
 
 export const PROVIDER_KINDS = Object.freeze({
   OPENAI_NATIVE: 'openai-native',
-  MINIMAX_VIA_CLIPROXY: 'minimax-via-cliproxy',
+  OPENAI_COMPATIBLE: 'openai-compatible',
 });
 
 export function formatPlatformScopeKey(platform: string, externalScopeId: string): string {

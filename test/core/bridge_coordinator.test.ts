@@ -522,13 +522,13 @@ function makeRuntime({
   weiboHotSearch = null,
 } = {}) {
   const openai = new FakeProviderPlugin('openai-native', { replyPrefix: 'openai' });
-  const minimax = new FakeProviderPlugin('minimax-via-cliproxy', { replyPrefix: 'minimax' });
+  const compatible = new FakeProviderPlugin('openai-compatible', { replyPrefix: 'compatible' });
   const runtime = createCodexBridgeRuntime({
     platformPlugins,
-    providerPlugins: [openai, minimax],
+    providerPlugins: [openai, compatible],
     providerProfiles: [
       makeProviderProfile('openai-default', 'openai-native', 'OpenAI Default'),
-      makeProviderProfile('minimax-default', 'minimax-via-cliproxy', 'MiniMax Default'),
+      makeProviderProfile('compat-default', 'openai-compatible', 'Compatible Default'),
     ],
     defaultProviderProfileId: 'openai-default',
     defaultCwd,
@@ -538,7 +538,7 @@ function makeRuntime({
     codexInstructionsManager,
     weiboHotSearch,
   });
-  return { runtime, openai, minimax };
+  return { runtime, openai, compatible, minimax: compatible };
 }
 
 async function maybeReturnArtifactIntentParserResult({
@@ -2044,7 +2044,7 @@ test('/helps lists all supported slash commands and help entrypoints', async () 
   assert.match(text, /\/review \(\/rv\) 对当前工作区改动运行原生 Codex 代码审查/);
   assert.match(text, /\/uploads \(\/up, \/ul\) 开启上传暂存模式/);
   assert.match(text, /\/as \(\/assistant\) 助理记录统一入口/);
-  assert.match(text, /\/todo \(\/td\) 指定为代办类型的助理入口/);
+  assert.match(text, /\/todo \(\/td\) 指定为待办类型的助理入口/);
   assert.match(text, /\/remind \(\/rmd\) 指定为提醒类型的助理入口/);
   assert.match(text, /\/note \(\/nt\) 指定为笔记类型的助理入口/);
   assert.match(text, /\/provider \(\/pd\) 查看可用 provider/);
@@ -2782,7 +2782,7 @@ test('/as uses Codex classification for required same-day work instead of local 
 
     const savedText = saved.messages.map((message) => message.text ?? '').join('\n');
     assert.match(savedText, /助理记录待确认/);
-    assert.match(savedText, /类型：代办/);
+    assert.match(savedText, /类型：待办/);
     assert.match(savedText, /标题：停机坪成本和报价测算/);
 
     const record = runtime.repositories.assistantRecords.list()[0];
@@ -3043,7 +3043,7 @@ test('/todo natural language manages an existing todo through the assistant reco
   const draft = await runtime.services.bridgeCoordinator.handleInboundEvent({
     platform: 'weixin',
     externalScopeId: scopeId,
-    text: '/todo 目前已有的第一条代办的状态修改为进行中',
+    text: '/todo 目前已有的第一条待办的状态修改为进行中',
   });
   const draftText = draft.messages.map((message) => message.text ?? '').join('\n');
   assert.match(draftText, /找到可能相关的助理记录/);
@@ -4015,7 +4015,7 @@ test('/todo and /as natural language list queries stay local instead of creating
     text: '/todo 给我看看现在还有哪些待办',
   });
   const typedListText = typedList.messages.map((message) => message.text ?? '').join('\n');
-  assert.match(typedListText, /助理记录 \| 代办/);
+  assert.match(typedListText, /助理记录 \| 待办/);
   assert.match(typedListText, /检查服务器磁盘空间/);
   assert.doesNotMatch(typedListText, /助理记录已保存/);
   assert.equal(runtime.repositories.assistantRecords.list().length, 1);
@@ -4027,9 +4027,21 @@ test('/todo and /as natural language list queries stay local instead of creating
     text: '/as 给我看看现在还有哪些待办',
   });
   const assistantListText = assistantList.messages.map((message) => message.text ?? '').join('\n');
-  assert.match(assistantListText, /助理记录 \| 代办/);
+  assert.match(assistantListText, /助理记录 \| 待办/);
   assert.match(assistantListText, /检查服务器磁盘空间/);
   assert.doesNotMatch(assistantListText, /助理记录已保存/);
+  assert.equal(runtime.repositories.assistantRecords.list().length, 1);
+  assert.equal(openai.startTurnCalls.length, 0);
+
+  const assistantFind = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: scopeId,
+    text: '/as 给我找找我的待办',
+  });
+  const assistantFindText = assistantFind.messages.map((message) => message.text ?? '').join('\n');
+  assert.match(assistantFindText, /助理记录 \| 待办/);
+  assert.match(assistantFindText, /检查服务器磁盘空间/);
+  assert.doesNotMatch(assistantFindText, /助理记录已保存/);
   assert.equal(runtime.repositories.assistantRecords.list().length, 1);
   assert.equal(openai.startTurnCalls.length, 0);
 });
@@ -4148,8 +4160,8 @@ test('/models lists available models for the current provider', async () => {
   assert.match(text, /当前生效模型：gpt-5.4/);
   assert.match(text, /模型来源：provider 默认/);
   assert.match(text, /模型列表：/);
-  assert.match(text, /- gpt-5\.4 .*（当前）.*（默认）/);
-  assert.match(text, /- gpt-5.2-codex/);
+  assert.match(text, /1\. gpt-5\.4 .*（当前）.*（默认）/);
+  assert.match(text, /2\. gpt-5.2-codex/);
   assert.match(text, /最新 frontier/);
 });
 
@@ -4202,6 +4214,39 @@ test('/model shows current model and updates model setting for the next turn', a
   assert.match(currentText, /模型来源：当前会话显式设置/);
   assert.match(currentText, /当前生效思考深度：medium/);
   assert.match(currentText, /思考深度来源：模型默认/);
+});
+
+test('/model can switch models by list index', async () => {
+  const { runtime, openai } = makeRuntime();
+
+  await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-user-model-index-1',
+    text: 'start conversation',
+  });
+
+  const updated = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-user-model-index-1',
+    text: '/model 2',
+  });
+  assert.equal(updated.messages[0]?.text ?? '', '模型已更新为：gpt-5.2-codex');
+  assert.equal(updated.messages[1]?.text ?? '', '下一轮生效。');
+
+  await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-user-model-index-1',
+    text: 'next turn',
+  });
+  assert.equal(openai.startTurnCalls.at(-1)?.sessionSettings?.model, 'gpt-5.2-codex');
+
+  const updatedWithEffort = await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-user-model-index-1',
+    text: '/model 1 xhigh',
+  });
+  assert.equal(updatedWithEffort.messages[0]?.text ?? '', '模型已更新为：gpt-5.4');
+  assert.equal(updatedWithEffort.messages[1]?.text ?? '', '思考深度已更新为：xhigh');
 });
 
 test('/model sets reasoning effort for the current/default model', async () => {
@@ -5154,7 +5199,7 @@ test('bridge coordinator shows command-specific blocked messages while a turn is
     ['/new', '当前有回复在进行中，暂时不能新建会话。请先等待，或使用 /stop 中断。'],
     ['/open thread-1', '当前有回复在进行中，暂时不能切换线程。请先等待，或使用 /stop 中断。'],
     ['/rename thread-1 新名字', '当前有回复在进行中，暂时不能重命名线程。请先等待，或使用 /stop 中断。'],
-    ['/provider minimax-default', '当前有回复在进行中，暂时不能切换 provider。请先等待，或使用 /stop 中断。'],
+    ['/provider compat-default', '当前有回复在进行中，暂时不能切换 provider。请先等待，或使用 /stop 中断。'],
     ['/model gpt-5.4', '当前有回复在进行中，暂时不能切换模型。请先等待，或使用 /stop 中断。'],
     ['/personality friendly', '当前有回复在进行中，暂时不能切换 personality。请先等待，或使用 /stop 中断。'],
     ['/permissions full-access', '当前有回复在进行中，暂时不能切换权限预设。请先等待，或使用 /stop 中断。'],
@@ -5253,7 +5298,7 @@ test('command-specific blocked messages switch to wait-for-stop wording after in
 
   const blocked = await runtime.services.bridgeCoordinator.handleInboundEvent({
     ...scopeRef,
-    text: '/provider minimax-default',
+    text: '/provider compat-default',
   });
 
   assert.equal(blocked.messages[0]?.text ?? '', '已请求中断，请等待当前回复停止后再切换 provider。');
@@ -5330,19 +5375,29 @@ test('/provider switches the scope to a new provider-backed session', async () =
     externalScopeId: 'wx-user-1',
     text: '/plan on',
   });
+  await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-user-1',
+    text: '/model gpt-5.4 xhigh',
+  });
+  await runtime.services.bridgeCoordinator.handleInboundEvent({
+    platform: 'weixin',
+    externalScopeId: 'wx-user-1',
+    text: '/fast',
+  });
 
   const result = await runtime.services.bridgeCoordinator.handleInboundEvent({
     platform: 'weixin',
     externalScopeId: 'wx-user-1',
-    text: '/provider minimax-default',
+    text: '/provider compat-default',
   });
   const rebound = runtime.services.bridgeSessions.resolveScopeSession({
     platform: 'weixin',
     externalScopeId: 'wx-user-1',
   });
 
-  assert.match(result.messages[0]?.text ?? '', /已切换到 Provider 配置：minimax-default/);
-  assert.equal(result.session?.providerProfileId, 'minimax-default');
+  assert.match(result.messages[0]?.text ?? '', /已切换到 Provider 配置：compat-default/);
+  assert.equal(result.session?.providerProfileId, 'compat-default');
   assert.equal(minimax.startThreadCalls.length, 1);
   assert.ok(rebound);
   assert.equal(
@@ -5353,6 +5408,10 @@ test('/provider switches the scope to a new provider-backed session', async () =
     runtime.services.bridgeSessions.getSessionSettings(rebound.id)?.collaborationMode,
     'plan',
   );
+  const reboundSettings = runtime.services.bridgeSessions.getSessionSettings(rebound.id);
+  assert.equal(reboundSettings?.model, null);
+  assert.equal(reboundSettings?.reasoningEffort, null);
+  assert.equal(reboundSettings?.serviceTier, null);
 });
 
 test('/open preserves plan mode when rebinding to another thread', async () => {
@@ -5404,7 +5463,7 @@ test('/provider without args lists current and available profiles', async () => 
   assert.match(result.messages[0]?.text ?? '', /当前 Provider 配置：openai-default/);
   assert.match(result.messages[1]?.text ?? '', /可用的 Provider 配置/);
   assert.match(result.messages[2]?.text ?? '', /openai-default/);
-  assert.match(result.messages[3]?.text ?? '', /minimax-default/);
+  assert.match(result.messages[3]?.text ?? '', /compat-default/);
 });
 
 test('/threads renders a paged thread browser with previews and commands', async () => {
@@ -7637,12 +7696,12 @@ test('/agent show, retry, rename, stop, and delete manage queued jobs', async ()
 test('resolveOpenAIAgentRuntimeConfig supports OpenAI-compatible MiniMax settings', () => {
   const config = resolveOpenAIAgentRuntimeConfig({
     CODEXBRIDGE_AGENT_API_KEY: 'mini-key',
-    CODEXBRIDGE_AGENT_BASE_URL: 'https://api.minimax.io/v1',
+    CODEXBRIDGE_AGENT_BASE_URL: 'https://api.minimaxi.com/v1',
     CODEXBRIDGE_AGENT_MODEL: 'MiniMax-M2.7',
   } as NodeJS.ProcessEnv);
 
   assert.equal(config.apiKey, 'mini-key');
-  assert.equal(config.baseURL, 'https://api.minimax.io/v1');
+  assert.equal(config.baseURL, 'https://api.minimaxi.com/v1');
   assert.equal(config.model, 'MiniMax-M2.7');
   assert.equal(config.useResponses, false);
 });
@@ -8411,7 +8470,7 @@ test('/plugins numeric selection does not reuse cached indexes after switching p
   await runtime.services.bridgeCoordinator.handleInboundEvent({
     platform: 'weixin',
     externalScopeId: 'wx-user-plugin-provider-switch-1',
-    text: '/provider minimax-default',
+    text: '/provider compat-default',
   });
 
   const result = await runtime.services.bridgeCoordinator.handleInboundEvent({

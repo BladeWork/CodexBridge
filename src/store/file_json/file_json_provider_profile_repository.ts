@@ -16,6 +16,10 @@ export class FileJsonProviderProfileRepository implements ProviderProfileReposit
     return profile;
   }
 
+  delete(id: string): void {
+    this.store.write(this.list().filter((record) => record.id !== id));
+  }
+
   get(id: string): ProviderProfile | null {
     return this.list().find((record) => record.id === id) ?? null;
   }

@@ -8,18 +8,85 @@ import { loadCodexProfilesFromEnv, resolveCommand } from '../../../src/providers
 test('loadCodexProfilesFromEnv keeps Codex OpenAI as the default profile', () => {
   const result = loadCodexProfilesFromEnv({
     CODEX_REAL_BIN: '/usr/bin/codex',
-    CODEX_CLI_BIN: '/usr/bin/codex-via-proxy',
-    CODEX_PROVIDER_ID: 'cliproxyminimax',
-    CODEX_PROVIDER_NAME: 'CLIProxy MiniMax',
-    CODEX_PROVIDER_DEFAULT_MODEL: 'MiniMax-M2.7',
+    CODEX_COMPAT_PROVIDER_ID: 'compat-example',
+    CODEX_COMPAT_PROVIDER_NAME: 'Compatible Example',
+    CODEX_COMPAT_API_KEY: 'sk-test',
+    CODEX_COMPAT_BASE_URL: 'https://provider.example/v1',
+    CODEX_COMPAT_DEFAULT_MODEL: 'example-model',
   });
 
   assert.equal(result.defaultProviderProfileId, 'openai-default');
   assert.equal(result.profiles[0]?.providerKind, 'openai-native');
   assert.equal(result.profiles[0]?.config.cliBin, '/usr/bin/codex');
-  assert.equal(result.profiles[1]?.id, 'cliproxyminimax');
-  assert.equal(result.profiles[1]?.providerKind, 'minimax-via-cliproxy');
-  assert.equal(result.profiles[1]?.config.defaultModel, 'MiniMax-M2.7');
+  assert.equal(result.profiles[1]?.id, 'compat-example');
+  assert.equal(result.profiles[1]?.providerKind, 'openai-compatible');
+  assert.equal(result.profiles[1]?.config.apiKeyEnv, 'CODEX_COMPAT_API_KEY');
+  assert.equal(result.profiles[1]?.config.baseUrl, 'https://provider.example/v1');
+  assert.equal(result.profiles[1]?.config.defaultModel, 'example-model');
+});
+
+test('loadCodexProfilesFromEnv exposes DeepSeek through the generic OpenAI-compatible profile loader', () => {
+  const result = loadCodexProfilesFromEnv({
+    CODEX_REAL_BIN: '/usr/bin/codex',
+    CODEX_DEFAULT_PROVIDER_PROFILE_ID: 'deepseek',
+    DEEPSEEK_API_KEY: 'sk-test',
+    DEEPSEEK_BASE_URL: 'https://api.deepseek.com',
+    DEEPSEEK_DEFAULT_MODEL: 'deepseek-v4-pro',
+  });
+
+  const profile = result.profiles.find((entry) => entry.id === 'deepseek');
+  assert.equal(result.defaultProviderProfileId, 'deepseek');
+  assert.equal(profile?.providerKind, 'openai-compatible');
+  assert.equal(profile?.displayName, 'DeepSeek');
+  assert.equal(profile?.config.cliBin, '/usr/bin/codex');
+  assert.equal(profile?.config.apiKeyEnv, 'DEEPSEEK_API_KEY');
+  assert.equal(profile?.config.baseUrl, 'https://api.deepseek.com');
+  assert.equal(profile?.config.defaultModel, 'deepseek-v4-pro');
+  assert.equal(profile?.config.providerLabel, 'deepseek');
+  assert.equal(profile?.config.capabilities?.supportsBuiltinWebSearchTool, false);
+  assert.equal(profile?.config.modelCatalogMode, 'overlay-only');
+});
+
+test('loadCodexProfilesFromEnv exposes MiniMax through the generic OpenAI-compatible profile loader', () => {
+  const result = loadCodexProfilesFromEnv({
+    CODEX_REAL_BIN: '/usr/bin/codex',
+    CODEX_DEFAULT_PROVIDER_PROFILE_ID: 'minimax',
+    MINIMAX_API_KEY: 'sk-test',
+    MINIMAX_BASE_URL: 'https://api.minimaxi.com/v1',
+    MINIMAX_MODEL: 'MiniMax-M2.7',
+  });
+
+  const profile = result.profiles.find((entry) => entry.id === 'minimax');
+  assert.equal(result.defaultProviderProfileId, 'minimax');
+  assert.equal(profile?.providerKind, 'openai-compatible');
+  assert.equal(profile?.displayName, 'MiniMax');
+  assert.equal(profile?.config.cliBin, '/usr/bin/codex');
+  assert.equal(profile?.config.apiKeyEnv, 'MINIMAX_API_KEY');
+  assert.equal(profile?.config.baseUrl, 'https://api.minimaxi.com/v1');
+  assert.equal(profile?.config.defaultModel, 'MiniMax-M2.7');
+  assert.equal(profile?.config.providerLabel, 'minimax');
+  assert.equal(profile?.config.capabilities?.supportsBuiltinWebSearchTool, false);
+  assert.equal(profile?.config.modelCatalogMode, 'overlay-only');
+});
+
+test('loadCodexProfilesFromEnv exposes additional CLIProxy-style compatible presets', () => {
+  const result = loadCodexProfilesFromEnv({
+    CODEX_REAL_BIN: '/usr/bin/codex',
+    KIMI_API_KEY: 'sk-kimi',
+    GEMINI_API_KEY: 'sk-gemini',
+    IFLOW_API_KEY: 'sk-iflow',
+  });
+
+  const kimi = result.profiles.find((entry) => entry.id === 'kimi');
+  const gemini = result.profiles.find((entry) => entry.id === 'gemini');
+  const iflow = result.profiles.find((entry) => entry.id === 'iflow');
+  assert.equal(kimi?.providerKind, 'openai-compatible');
+  assert.equal(kimi?.config.baseUrl, 'https://api.kimi.com/coding');
+  assert.equal(kimi?.config.defaultModel, 'kimi-k2');
+  assert.equal(gemini?.providerKind, 'openai-compatible');
+  assert.equal(gemini?.config.defaultModel, 'gemini-2.5-pro');
+  assert.equal(iflow?.providerKind, 'openai-compatible');
+  assert.equal(iflow?.config.defaultModel, 'qwen3-coder-plus');
 });
 
 test('resolveCommand prefers codex.exe before wrapper scripts on Windows', () => {

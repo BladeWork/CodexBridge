@@ -81,7 +81,7 @@ const HELP_FLAG_SET = new Set(['-h', '--help', '-help', '-helps']);
 const STATUS_DETAILS_ARG_SET = new Set(['details', 'detail', 'full']);
 const FAST_SERVICE_TIER = 'fast';
 const NORMAL_SERVICE_TIER = 'flex';
-const CODEX_BACKED_PROVIDER_KIND_SET = new Set(['openai-native', 'minimax-via-cliproxy']);
+const CODEX_BACKED_PROVIDER_KIND_SET = new Set(['openai-native', 'openai-compatible']);
 const AUTO_COMMAND_SKILL_PATH = path.resolve('docs/command-skills/auto.md');
 const ASSISTANT_RECORD_COMMAND_SKILL_PATH = path.resolve('docs/command-skills/assistant-record.md');
 const AGENT_COMMAND_SKILL_PATH = path.resolve('docs/command-skills/agent.md');
@@ -4142,9 +4142,13 @@ export class BridgeCoordinator {
         codexThreadId: resolvedThread.threadId,
       },
       {
-        initialSettings: this.buildReboundSessionSettings(currentSettings, {
-          locale: this.resolveScopeLocale(scopeRef, event),
-        }),
+        initialSettings: currentSession?.providerProfileId === providerProfile.id
+          ? this.buildReboundSessionSettings(currentSettings, {
+            locale: this.resolveScopeLocale(scopeRef, event),
+          })
+          : this.buildProviderSwitchSessionSettings(currentSettings, {
+            locale: this.resolveScopeLocale(scopeRef, event),
+          }),
       },
     );
     const messages = [
@@ -4292,7 +4296,8 @@ export class BridgeCoordinator {
       });
       return messageResponse([...messages, this.t('coordinator.permissions.nextTurn')], buildSessionMeta(session));
     }
-    const matchedModel = this.findModelByToken(models, requestedModel);
+    const matchedModel = this.findModelByToken(models, requestedModel)
+      ?? this.findModelByIndexToken(models, requestedModel);
     if (!matchedModel && normalizedArgs.length === 1) {
       const mergedInput = this.parseConcatenatedModelEffortToken(normalizedModel, models);
       if (mergedInput) {
@@ -4907,6 +4912,15 @@ export class BridgeCoordinator {
     }) ?? null;
   }
 
+  findModelByIndexToken(models, request) {
+    const normalized = String(request ?? '').trim();
+    if (!/^[1-9]\d*$/.test(normalized)) {
+      return null;
+    }
+    const index = Number.parseInt(normalized, 10) - 1;
+    return models[index] ?? null;
+  }
+
   parseConcatenatedModelEffortToken(token, models) {
     const normalizedToken = String(token ?? '').trim().toLowerCase();
     if (!normalizedToken) {
@@ -4994,7 +5008,13 @@ export class BridgeCoordinator {
     const scopeRef = toScopeRef(event);
     if (args.length === 0) {
       const current = this.bridgeSessions.resolveScopeSession(scopeRef);
-      const profiles = this.providerProfiles.list().map((profile) => `- ${profile.id} (${profile.providerKind})`);
+      const profiles = this.providerProfiles.list().map((profile) => {
+        const displayName = String(profile.displayName ?? '').trim();
+        const label = displayName && displayName !== profile.id
+          ? `${profile.id} | ${displayName}`
+          : profile.id;
+        return `- ${label} (${profile.providerKind})`;
+      });
       return messageResponse([
         this.t('coordinator.provider.current', { id: current?.providerProfileId ?? this.resolveDefaultProviderProfileId() }),
         this.t('coordinator.provider.available'),
@@ -5014,7 +5034,7 @@ export class BridgeCoordinator {
     const currentSettings = current ? this.bridgeSessions.getSessionSettings(current.id) : null;
     const switched = await this.bridgeSessions.switchScopeProvider(scopeRef, {
       nextProviderProfileId: profile.id,
-      initialSettings: this.buildReboundSessionSettings(currentSettings, {
+      initialSettings: this.buildProviderSwitchSessionSettings(currentSettings, {
         locale: this.resolveScopeLocale(scopeRef, event),
       }),
       providerStartOptions: {
@@ -9617,7 +9637,7 @@ export class BridgeCoordinator {
   }: {
     activeModelId?: string | null;
   } = {}) {
-    return models.map((model) => {
+    return models.map((model, index) => {
       const modelId = String(model.model ?? model.id ?? '').trim();
       const displayName = String(model.displayName ?? '').trim();
       const reasonings = Array.isArray(model.supportedReasoningEfforts) && model.supportedReasoningEfforts.length > 0
@@ -9629,9 +9649,9 @@ export class BridgeCoordinator {
         : '';
       const defaultMarker = model.isDefault ? ` ${this.t('coordinator.models.defaultSuffix')}` : '';
       if (!displayName || displayName === modelId) {
-        return `- ${modelId}${currentMarker}${defaultMarker}${reasonings}${description ? ` - ${description}` : ''}`;
+        return `${index + 1}. ${modelId}${currentMarker}${defaultMarker}${reasonings}${description ? ` - ${description}` : ''}`;
       }
-      return `- ${modelId}${currentMarker}${defaultMarker} ${displayName}${reasonings}${description ? ` - ${description}` : ''}`;
+      return `${index + 1}. ${modelId}${currentMarker}${defaultMarker} ${displayName}${reasonings}${description ? ` - ${description}` : ''}`;
     });
   }
 
@@ -10692,6 +10712,18 @@ export class BridgeCoordinator {
         ...(currentSettings?.metadata ?? {}),
       },
       ...overrides,
+    };
+  }
+
+  buildProviderSwitchSessionSettings(
+    currentSettings: SessionSettings | null,
+    overrides: Partial<SessionSettings> = {},
+  ): Partial<SessionSettings> {
+    return {
+      ...this.buildReboundSessionSettings(currentSettings, overrides),
+      model: null,
+      reasoningEffort: null,
+      serviceTier: null,
     };
   }
 }
@@ -15068,10 +15100,10 @@ function isAssistantRecordListQuery(
   forcedType: AssistantRecordType | null,
   inferredType: AssistantRecordType | null,
 ): boolean {
-  if (forcedType && /^(?:给我)?(?:查看|看看|看一下|查一下|列出|显示)(?:一下)?$/u.test(value)) {
+  if (forcedType && /^(?:给我)?(?:查看|看看|看一下|查一下|查找|找找|找一下|搜一下|搜索|列出|显示)(?:一下)?$/u.test(value)) {
     return true;
   }
-  const hasViewVerb = /(?:查看|看看|看一下|查一下|列出|列一下|显示|给我看|给我看看|打开)/u.test(value);
+  const hasViewVerb = /(?:查看|看看|看一下|查一下|查找|找找|找一下|搜一下|搜索|列出|列一下|显示|给我看|给我看看|打开)/u.test(value);
   const hasListCue = /(?:有哪些|还有哪些|都有哪些|有哪(?:些|几|几个)|有什么|有啥|当前|现在|目前|所有|全部|还(?:有|剩)|剩下|列表|清单)/u.test(value);
   const mentionsSpecificType = inferredType !== null;
   const mentionsGenericRecords = /(?:助理记录|记录|事项|条目|清单|列表)/u.test(value);
@@ -15965,14 +15997,16 @@ function getCommandHelpSpecs(i18n: Translator) {
     summary: i18n.t('coordinator.help.summary.model'),
     usage: [
       '/model',
-      '/model <modelId|effort|default|reset>',
-      '/model <modelId> <effort>',
+      '/model <序号|modelId|effort|default|reset>',
+      '/model <序号|modelId> <effort>',
       '/model -h',
     ],
     examples: [
       '/model',
+      '/model 1',
       '/model gpt-5.4',
       '/model high',
+      '/model 1 xhigh',
       '/model gpt-5.4 xhigh',
       '/model default',
     ],

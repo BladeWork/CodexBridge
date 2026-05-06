@@ -98,6 +98,7 @@ It borrows the most useful CLI help conventions while staying chat-friendly:
 /rn 2 微信桥接排障
 /model
 /m
+/model 1
 /model gpt-5.4
 /model default
 /models
@@ -259,7 +260,7 @@ MiniMax/OpenAI-compatible example:
 
 ```bash
 CODEXBRIDGE_AGENT_API_KEY=...
-CODEXBRIDGE_AGENT_BASE_URL=https://api.minimax.io/v1
+CODEXBRIDGE_AGENT_BASE_URL=https://api.minimaxi.com/v1
 CODEXBRIDGE_AGENT_MODEL=MiniMax-M2.7
 CODEXBRIDGE_AGENT_API=chat_completions
 ```
@@ -458,7 +459,20 @@ Examples:
 /pd
 /provider openai-default
 /pd openai-default
+/provider DeepSeek
+/pd deepseek
+/provider minimax
+/pd minimax
 ```
+
+DeepSeek, MiniMax, Qwen, OpenRouter, Kimi, Gemini, iFlow, and custom compatible APIs all use the same generic `openai-compatible` provider path. Adding one should normally be env configuration plus a capability preset, not a new provider plugin.
+
+The OpenAI-compatible adapter follows the CLIProxyAPI-style split:
+
+- provider selection is env/profile configuration
+- model differences live in a capability catalog
+- thinking/reasoning quirks are translated by model capability, not by a dedicated provider class
+- unavoidable local translator repairs, such as Kimi model alias rewrite and iFlow boolean thinking flags, stay inside the generic adapter layer
 
 ### `/models` and `/ms`
 
@@ -481,8 +495,9 @@ View the current effective model configuration or switch it for the current scop
 
 - `/model` shows the current provider, effective model, model source, effective reasoning effort, effort source, and supported effort range
 - `/model <effort>` updates only the reasoning effort for the current effective model
+- `/model <index>` updates the model by the numbered list shown by `/models`
 - `/model <modelId>` updates the model for future turns
-- `/model <modelId> <effort>` updates both together
+- `/model <index|modelId> <effort>` updates both together
 - `/model default` resets model and reasoning effort back to provider defaults for the session
 - changes are session-scoped and take effect on the next turn
 
@@ -493,6 +508,8 @@ Examples:
 /m
 /model default
 /model high
+/model 1
+/model 1 xhigh
 /model gpt-5.4 xhigh
 /model gpt-5.4
 ```

@@ -88,8 +88,10 @@ These subcommands do not need Codex semantic understanding and should be handled
 Natural-language view/list requests are also local-only, not new records. Examples:
 
 - `/todo 给我看看现在还有哪些待办`
+- `/as 给我找找我的待办`
 - `/todo 还有哪些`
 - `/as 给我看看现在有哪些待办`
+- `/as 搜索我的提醒`
 - `/remind 看看还有哪些提醒`
 - `/note 列出现在的笔记`
 

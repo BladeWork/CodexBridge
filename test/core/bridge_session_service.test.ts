@@ -145,12 +145,12 @@ test('multiple platform scopes can bind to the same bridge session', async () =>
 
 test('switchScopeProvider creates a new session and keeps provider boundaries isolated', async () => {
   const openaiPlugin = new FakeProviderPlugin('openai-native');
-  const minimaxPlugin = new FakeProviderPlugin('minimax-via-cliproxy');
+  const compatiblePlugin = new FakeProviderPlugin('openai-compatible');
   const runtime = createCodexBridgeRuntime({
-    providerPlugins: [openaiPlugin as any, minimaxPlugin as any],
+    providerPlugins: [openaiPlugin as any, compatiblePlugin as any],
     providerProfiles: [
       makeProviderProfile('openai-default', 'openai-native', 'OpenAI Default'),
-      makeProviderProfile('minimax-default', 'minimax-via-cliproxy', 'MiniMax Default'),
+      makeProviderProfile('compat-default', 'openai-compatible', 'Compatible Default'),
     ],
   });
 
@@ -159,16 +159,16 @@ test('switchScopeProvider creates a new session and keeps provider boundaries is
     providerProfileId: 'openai-default',
   });
   const switched = await runtime.services.bridgeSessions.switchScopeProvider(scopeRef, {
-    nextProviderProfileId: 'minimax-default',
+    nextProviderProfileId: 'compat-default',
   });
   const resolved = runtime.services.bridgeSessions.requireScopeSession(scopeRef);
 
   assert.notEqual(original.id, switched.id);
   assert.equal(original.providerProfileId, 'openai-default');
-  assert.equal(switched.providerProfileId, 'minimax-default');
+  assert.equal(switched.providerProfileId, 'compat-default');
   assert.equal(resolved.id, switched.id);
   assert.equal(openaiPlugin.calls.length, 1);
-  assert.equal(minimaxPlugin.calls.length, 1);
+  assert.equal(compatiblePlugin.calls.length, 1);
 });
 
 test('listProviderThreads includes provider-archived threads only in archived view', async () => {

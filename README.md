@@ -6,7 +6,7 @@ CodexBridge is a Codex-centered gateway for connecting multiple chat platforms t
 
 - First delivery target: `WeChat + Codex`
 - Future platforms: `Telegram`, additional chat transports
-- Future Codex provider profiles: `MiniMax via CLIProxyAPI`, additional Codex-compatible backends
+- Future Codex provider profiles: configuration-only OpenAI-compatible backends such as `MiniMax`, `DeepSeek`, `Qwen`, `OpenRouter`, `Kimi`, `Gemini`, and `iFlow`
 - Core rule: platforms are adapters, Codex stays the execution engine, and Codex thread state stays the source of truth
 
 ## Documents
@@ -44,6 +44,29 @@ Current implemented bridge pieces:
 - WeChat platform skeleton for Hermes-compatible iLink config loading, QR account state reuse, inbound DM normalization, long-poll client/poller wiring, context-token persistence, text chunking, and outbound text/typing delivery
 - Codex profile loader and initial Codex app-server client/plugin path for shared thread execution
 - WeChat runtime wiring that feeds poll events into the shared bridge coordinator and sends responses back through the WeChat transport
+- OpenAI-compatible Responses adapter for non-OpenAI Chat Completions providers, including compact fallback, SSE stream translation, tool-call repair, provider/model capability rules, and gated live-provider smoke tests
+
+## OpenAI-Compatible Provider Validation
+
+Live provider validation is opt-in so normal tests do not spend API quota.
+
+```bash
+CODEXBRIDGE_TEST_LIVE_OPENAI_COMPATIBLE=1 pnpm exec tsx --test test/providers/openai_compatible/live_provider_smoke.test.ts
+```
+
+Supported smoke env names:
+
+```text
+DEEPSEEK_API_KEY / DEEPSEEK_BASE_URL / DEEPSEEK_DEFAULT_MODEL
+MINIMAX_API_KEY / MINIMAX_BASE_URL / MINIMAX_MODEL
+QWEN_API_KEY or DASHSCOPE_API_KEY / QWEN_BASE_URL / QWEN_MODEL
+OPENROUTER_API_KEY / OPENROUTER_BASE_URL / OPENROUTER_MODEL
+KIMI_API_KEY / KIMI_BASE_URL / KIMI_MODEL
+GEMINI_API_KEY / GEMINI_BASE_URL / GEMINI_MODEL
+IFLOW_API_KEY / IFLOW_BASE_URL / IFLOW_MODEL
+```
+
+Runtime WebSocket is still disabled for the local OpenAI-compatible adapter until the server grows an upgrade handler. The CLIProxyAPI-style WebSocket transcript/tool-call repair logic is implemented as a tested module first, so enabling WebSocket later has a safe core to call instead of reintroducing transcript corruption.
 
 ## WeChat Slash Commands
 
@@ -102,6 +125,7 @@ Recommended entrypoints:
 /ms
 /model
 /m
+/model 1
 /personality
 /psn pragmatic
 /instructions
@@ -253,12 +277,50 @@ CODEXBRIDGE_AGENT_MODEL=gpt-5.5
 
 # OpenAI-compatible provider, for example MiniMax
 CODEXBRIDGE_AGENT_API_KEY=...
-CODEXBRIDGE_AGENT_BASE_URL=https://api.minimax.io/v1
+CODEXBRIDGE_AGENT_BASE_URL=https://api.minimaxi.com/v1
 CODEXBRIDGE_AGENT_MODEL=MiniMax-M2.7
 CODEXBRIDGE_AGENT_API=chat_completions
 ```
 
 `CODEXBRIDGE_AGENT_API_KEY` takes precedence over `OPENAI_API_KEY` for the fallback Agents SDK path. The default path still uses Codex app-server first. When `CODEXBRIDGE_AGENT_BASE_URL` or `OPENAI_BASE_URL` is set, the bridge defaults Agents SDK calls to Chat Completions compatibility mode unless `CODEXBRIDGE_AGENT_API=responses` is explicitly set.
+
+OpenAI-compatible runtime adapter:
+
+- CodexBridge can expose non-OpenAI providers through a local Responses adapter while Codex app-server still talks to a Responses-shaped endpoint.
+- The adapter now handles `/responses/compact`, Chat Completions conversion, stream error mapping, usage fallback, provider/model thinking policy, payload compatibility, multimodal input capability flags, and model capability metadata.
+- DeepSeek, MiniMax, Qwen, OpenRouter, Kimi, Gemini, and iFlow are loaded as `providerKind: openai-compatible`; they differ by env vars and capability presets only, not separate provider plugin classes.
+- The model capability catalog follows the same direction as CLIProxyAPI: model quirks are represented as data (`thinking`, `payload`, tool support, multimodal support, token caps), while the executor stays generic.
+- Current built-in catalog covers the CLIProxyAPI model families used by Codex-style routing: Codex, DeepSeek, MiniMax, Qwen, iFlow, Kimi, OpenRouter, Gemini/AI Studio/Vertex, Claude, and Antigravity. Native auth/header systems from CLIProxyAPI are not copied into this adapter; use provider env vars or the custom `CODEX_COMPAT_*` profile for deployment-specific credentials.
+- Auth pools, proxy rotation, and custom provider header management remain deployment-layer concerns and are intentionally separate from the generic OpenAI-compatible adapter.
+
+Runtime provider examples:
+
+```bash
+DEEPSEEK_API_KEY=...
+DEEPSEEK_DEFAULT_MODEL=deepseek-v4-flash
+
+MINIMAX_API_KEY=...
+MINIMAX_BASE_URL=https://api.minimaxi.com/v1
+MINIMAX_MODEL=MiniMax-M2.7
+
+KIMI_API_KEY=...
+KIMI_BASE_URL=https://api.kimi.com/coding
+KIMI_MODEL=kimi-k2
+
+GEMINI_API_KEY=...
+GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+GEMINI_MODEL=gemini-2.5-pro
+
+IFLOW_API_KEY=...
+IFLOW_BASE_URL=https://apis.iflow.cn/v1
+IFLOW_MODEL=qwen3-coder-plus
+
+CODEX_COMPAT_PROVIDER_ID=custom
+CODEX_COMPAT_API_KEY=...
+CODEX_COMPAT_BASE_URL=https://provider.example/v1
+CODEX_COMPAT_DEFAULT_MODEL=example-model
+CODEX_COMPAT_CAPABILITIES=default # or deepseek/minimax/qwen/kimi/gemini/iflow/openrouter
+```
 
 ### `/model` and `/m`
 
@@ -271,6 +333,8 @@ Examples:
 /m
 /model default
 /model high
+/model 1
+/model 1 xhigh
 /model gpt-5.4 xhigh
 /model gpt-5.4
 ```
@@ -529,7 +593,7 @@ That file is the stable place to adjust:
 
 - `WEIXIN_ACCOUNT_ID`
 - `CODEX_DEFAULT_PROVIDER_PROFILE_ID`
-- optional proxy profile keys such as `CODEX_PROVIDER_*`
+- optional OpenAI-compatible provider keys such as `DEEPSEEK_*`, `MINIMAX_*`, `QWEN_*`, `OPENROUTER_*`, or `CODEX_COMPAT_*`
 - `CODEXBRIDGE_DEBUG_WEIXIN`
 
 ### Windows Scheduled Task

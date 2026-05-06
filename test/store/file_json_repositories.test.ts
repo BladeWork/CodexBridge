@@ -130,6 +130,32 @@ test('file-backed repositories preserve scope bindings across runtime restarts',
   assert.equal(status.session?.bridgeSessionId, first.session?.bridgeSessionId);
 });
 
+test('file-backed provider profiles are reconciled to the current runtime config', () => {
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codexbridge-json-store-'));
+  const providerPlugin = new FakeProviderPlugin('openai-native');
+  const currentProfile = makeProviderProfile('openai-default', 'openai-native', 'OpenAI Default');
+  const staleProfile = makeProviderProfile('old-compatible', 'openai-compatible', 'Old Compatible');
+
+  createCodexBridgeRuntime({
+    providerPlugins: [providerPlugin],
+    providerProfiles: [currentProfile, staleProfile],
+    defaultProviderProfileId: currentProfile.id,
+    repositories: createFileJsonRepositories(stateDir),
+  });
+
+  const runtime = createCodexBridgeRuntime({
+    providerPlugins: [providerPlugin],
+    providerProfiles: [currentProfile],
+    defaultProviderProfileId: currentProfile.id,
+    repositories: createFileJsonRepositories(stateDir),
+  });
+
+  assert.deepEqual(
+    runtime.repositories.providerProfiles.list().map((profile: any) => profile.id),
+    ['openai-default'],
+  );
+});
+
 test('file-backed repositories preserve thread aliases across runtime restarts', async () => {
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codexbridge-json-store-'));
   const providerProfile = makeProviderProfile('openai-default', 'openai-native', 'OpenAI Default');

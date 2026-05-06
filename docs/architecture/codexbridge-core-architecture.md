@@ -13,7 +13,7 @@ The first shipped path is:
 The architecture must already be ready for:
 
 - platform: `Telegram`
-- Codex provider profile: `MiniMax via CLIProxyAPI`
+- Codex provider profiles: configuration-only OpenAI-compatible backends such as `MiniMax`, `DeepSeek`, `Qwen`, `OpenRouter`, `Kimi`, `Gemini`, and `iFlow`
 
 ## Non-goals for Phase 1
 
@@ -212,14 +212,26 @@ The target behavior is:
 - both platforms can continue the same Codex thread when the provider profile is the same
 - no Telegram-specific state should be required in the core for that to work
 
-## MiniMax Re-entry
+## OpenAI-Compatible Provider Re-entry
 
-MiniMax should later be added as a second Codex provider profile.
+Non-OpenAI providers should be added as provider profiles under one generic
+`openai-compatible` provider plugin. DeepSeek, MiniMax, Qwen, OpenRouter, Kimi,
+Gemini, iFlow, and future compatible providers differ by env config and
+capability preset, not by new bridge provider classes.
+
+The compatibility layer follows the same split as CLIProxyAPI:
+
+- provider profiles only decide credentials, base URL, and default model
+- model differences live in `openai_compatible` capability presets and catalog data
+- thinking/reasoning differences are translated from model capabilities
+- local translator repairs are generic and model-keyed, not provider-class keyed
+- deployment details such as auth pools, OAuth refresh, proxy rotation, or custom
+  provider headers stay outside the bridge provider abstraction
 
 Important rule:
 
 - it must not reuse the OpenAI profile's real Codex thread id
-- switching to MiniMax creates a new bridge session
+- switching to another provider profile creates a new bridge session
 - the platform binding moves, but the provider boundary stays clean
 
 ## Current Implementation Strategy

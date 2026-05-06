@@ -1,6 +1,7 @@
 import { CodexAppClient, createStderrLogger, readCodexAccountIdentity } from './app_client.js';
 import type { CodexTurnInput } from './app_client.js';
 import { CodexCliReviewRunner } from './review_runner.js';
+import { resolveReasoningEffortForProvider } from '../shared/thinking_policy.js';
 import { buildTurnArtifactDeveloperInstructions } from '../../core/turn_artifacts.js';
 import type {
   BridgeSession,
@@ -36,6 +37,7 @@ interface CodexProviderProfileConfig extends Record<string, unknown> {
   cliBin: string;
   launchCommand?: string | null;
   autolaunch?: boolean;
+  codexCliArgs?: string[];
   modelCatalog?: unknown[];
   modelCatalogMode?: 'merge' | 'overlay-only';
   defaultModel?: string | null;
@@ -64,6 +66,7 @@ export class CodexProviderPlugin {
   constructor({
     clientFactory = (profile) => new CodexAppClient({
       codexCliBin: profile.config.cliBin,
+      codexCliArgs: profile.config.codexCliArgs ?? [],
       launchCommand: profile.config.launchCommand ?? null,
       autolaunch: profile.config.autolaunch ?? false,
       modelCatalog: profile.config.modelCatalog ?? [],
@@ -207,7 +210,11 @@ export class CodexProviderPlugin {
   }): Promise<ProviderTurnResult> {
     const client = await this.ensureClient(providerProfile);
     const modelInfo = await this.resolveModelInfo(providerProfile, client, sessionSettings?.model ?? null);
-    const effort = this.resolveReasoningEffort(modelInfo, sessionSettings?.reasoningEffort ?? null);
+    const effort = this.resolveReasoningEffort(
+      providerProfile,
+      modelInfo,
+      sessionSettings?.reasoningEffort ?? null,
+    );
     const turnInput = buildCodexTurnInput(event, inputText);
     const developerInstructions = buildDeveloperInstructions(event);
     const personality = normalizeCodexPersonality(sessionSettings?.personality ?? null);
@@ -583,11 +590,16 @@ export class CodexProviderPlugin {
       ?? null;
   }
 
-  resolveReasoningEffort(modelInfo: ProviderModelInfo | null, requestedEffort: string | null): string | null {
-    if (requestedEffort) {
-      return requestedEffort;
-    }
-    return modelInfo?.defaultReasoningEffort ?? null;
+  resolveReasoningEffort(
+    providerProfile: ProviderProfile,
+    modelInfo: ProviderModelInfo | null,
+    requestedEffort: string | null,
+  ): string | null {
+    return resolveReasoningEffortForProvider({
+      providerKind: providerProfile.providerKind,
+      modelInfo,
+      requestedEffort,
+    });
   }
 }
 

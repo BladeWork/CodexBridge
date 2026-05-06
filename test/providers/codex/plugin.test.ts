@@ -169,6 +169,86 @@ test('CodexProviderPlugin uses per-profile clients and forwards default model in
   assert.match(String(seenDeveloperInstructions ?? ''), /thread\/session lifecycle, slash-command state transitions, and final platform delivery/i);
 });
 
+test('CodexProviderPlugin clamps unsupported reasoning efforts to the model fallback', async () => {
+  const seenEfforts: any[] = [];
+  const plugin = makePlugin(() => ({
+    async start() {},
+    async startTurn(params: any) {
+      seenEfforts.push(params.effort ?? null);
+      return {
+        outputText: 'done',
+        threadId: params.threadId,
+        title: null,
+      };
+    },
+    async listModels() {
+      return [{
+        id: 'gpt-test',
+        model: 'gpt-test',
+        displayName: 'GPT Test',
+        description: '',
+        isDefault: true,
+        supportedReasoningEfforts: ['medium', 'high'],
+        defaultReasoningEffort: 'medium',
+      }];
+    },
+  }));
+
+  await plugin.startTurn({
+    providerProfile: makeProfile({ defaultModel: null }),
+    bridgeSession: makeBridgeSession({ codexThreadId: 'thread-1' }),
+    sessionSettings: makeSessionSettings({ reasoningEffort: 'xhigh' }),
+    event: {
+      platform: 'weixin',
+      externalScopeId: 'wxid_1',
+      text: 'hello',
+    },
+    inputText: 'hello',
+  });
+
+  assert.deepEqual(seenEfforts, ['medium']);
+});
+
+test('CodexProviderPlugin leaves reasoning effort unset when neither user nor model specifies one', async () => {
+  const seenEfforts: any[] = [];
+  const plugin = makePlugin(() => ({
+    async start() {},
+    async startTurn(params: any) {
+      seenEfforts.push(params.effort ?? null);
+      return {
+        outputText: 'done',
+        threadId: params.threadId,
+        title: null,
+      };
+    },
+    async listModels() {
+      return [{
+        id: 'gpt-5.4',
+        model: 'gpt-5.4',
+        displayName: 'GPT-5.4',
+        description: '',
+        isDefault: true,
+        supportedReasoningEfforts: ['low', 'medium', 'high'],
+        defaultReasoningEffort: null,
+      }];
+    },
+  }));
+
+  await plugin.startTurn({
+    providerProfile: makeProfile({ defaultModel: 'gpt-5.4' }),
+    bridgeSession: makeBridgeSession({ codexThreadId: 'thread-1' }),
+    sessionSettings: makeSessionSettings({ reasoningEffort: null }),
+    event: {
+      platform: 'weixin',
+      externalScopeId: 'wxid_1',
+      text: 'hello',
+    },
+    inputText: 'hello',
+  });
+
+  assert.deepEqual(seenEfforts, [null]);
+});
+
 test('CodexProviderPlugin forwards ephemeral start and thread archive RPCs', async () => {
   const calls: any[] = [];
   const plugin = makePlugin((profile: any) => ({

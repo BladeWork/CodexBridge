@@ -4,7 +4,7 @@ import { TelegramPlatformPlugin } from './platforms/telegram/plugin.js';
 import { loadCodexProfilesFromEnv } from './providers/codex/config.js';
 import { CodexProviderPlugin } from './providers/codex/plugin.js';
 import { OpenAINativeProviderPlugin } from './providers/openai_native/plugin.js';
-import { MiniMaxViaCLIProxyProviderPlugin } from './providers/minimax/plugin.js';
+import { OpenAICompatibleProviderPlugin } from './providers/openai_compatible/plugin.js';
 import type { PlatformPluginContract } from './types/platform.js';
 import type { ProviderPluginContract } from './types/provider.js';
 
@@ -15,7 +15,7 @@ export {
   CodexProviderPlugin,
   loadCodexProfilesFromEnv,
   OpenAINativeProviderPlugin,
-  MiniMaxViaCLIProxyProviderPlugin,
+  OpenAICompatibleProviderPlugin,
 };
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -27,7 +27,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     ],
     providerPlugins: [
       new OpenAINativeProviderPlugin(),
-      new MiniMaxViaCLIProxyProviderPlugin(),
+      new OpenAICompatibleProviderPlugin(),
     ],
     providerProfiles: codexProfiles.profiles,
     defaultProviderProfileId: codexProfiles.defaultProviderProfileId,

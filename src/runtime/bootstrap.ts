@@ -80,8 +80,16 @@ export function createCodexBridgeRuntime({
   const agentJobsRepository = repositories.agentJobs ?? new InMemoryAgentJobRepository();
   const assistantRecordsRepository = repositories.assistantRecords ?? new InMemoryAssistantRecordRepository();
 
-  for (const providerProfile of providerProfiles) {
-    providerProfilesRepository.save(providerProfile);
+  if (providerProfiles.length > 0) {
+    const configuredProviderProfileIds = new Set(providerProfiles.map((profile) => profile.id));
+    for (const existingProviderProfile of providerProfilesRepository.list()) {
+      if (!configuredProviderProfileIds.has(existingProviderProfile.id)) {
+        providerProfilesRepository.delete(existingProviderProfile.id);
+      }
+    }
+    for (const providerProfile of providerProfiles) {
+      providerProfilesRepository.save(providerProfile);
+    }
   }
 
   const sessionRouter = new SessionRouter({

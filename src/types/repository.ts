@@ -12,6 +12,7 @@ export interface ProviderProfileRepository {
   getById(id: string): ProviderProfile | null;
   list(): ProviderProfile[];
   save(profile: ProviderProfile): ProviderProfile;
+  delete(id: string): void;
 }
 
 export interface BridgeSessionRepository {
