@@ -21,6 +21,7 @@ This package is intended to own only mission-runtime behavior:
 - attempts, events, workpad, and runner state persistence
 - stop plus retry/resume requeue control actions
 - pending-approval and handoff state modeling
+- host-adapter contracts for host-owned bindings, approvals, progress, and notifications
 
 It must not own bridge behavior:
 
@@ -35,14 +36,14 @@ It must not own bridge behavior:
 
 Current phase:
 
-- `phase-8a-api-contracts-plus-cycle-results`: package-owned mission
+- `phase-8b-host-adapter-contracts`: package-owned mission
   domain/workflow/workspace/provider/verifier/runtime foundations, first-class
   `WorkItem` / `ChecklistSnapshot` / `PlanChangeRequest` /
   `MissionGeneration` lineage, direct in-process `commands / queries / streams`
-  API contracts for `/agent`, and a typed `CycleResult` loop protocol now
-  persisted on mission events and returned from runtime runs so hosts can
-  observe continuation, repair, handoff, and completion outcomes without
-  reconstructing them from bridge-local heuristics
+  API contracts for `/agent`, a typed `CycleResult` loop protocol persisted on
+  mission events, and an explicit host-adapter contract for session/thread
+  binding plus approval/progress/artifact/notification handoff so hosts can
+  keep thinning into adapters instead of re-owning runtime truth
 
 This package should preserve the Symphony-style separation between:
 

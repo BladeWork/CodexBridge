@@ -131,6 +131,15 @@ records:
 - a direct in-process implementation used by CodexBridge for `/agent`
   `list/show/stop/retry`
 
+Phase 8b now adds the first explicit host adapter contract beside that API:
+
+- exported `MissionHostAdapter` / `MissionHostContext` boundary types
+- a first CodexBridge host adapter that routes session/thread binding,
+  progress, provider approvals, and artifact-publication hooks through that
+  package-owned contract
+- `/agent` artifact rendering now prefers package-owned execution artifact refs
+  before falling back to legacy `AgentJob` compatibility blobs
+
 That baseline is useful, but it is **not** the final target shape.
 The remaining work is to converge the current implementation toward the
 host-neutral architecture locked in the two architecture documents above.
@@ -603,7 +612,7 @@ Completion criteria:
   - mission timeline/history
   - mission attempts
   - execution refs / host bindings / artifact refs
-- [ ] Add explicit host adapter boundaries for session/thread/approval/artifact
+- [x] Add explicit host adapter boundaries for session/thread/approval/artifact
   delivery/notification/auth context
 - [x] Move `/agent` reads and control actions further onto package-owned query
   and command contracts

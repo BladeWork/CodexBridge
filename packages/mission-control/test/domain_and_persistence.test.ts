@@ -17,7 +17,7 @@ import {
 import type { MissionAttempt, MissionEvent } from '../src/index.js';
 
 test('mission control package exposes the current Mission Control phase marker', () => {
-  assert.equal(MISSION_CONTROL_PACKAGE_PHASE, 'phase-8a-api-contracts-plus-cycle-results');
+  assert.equal(MISSION_CONTROL_PACKAGE_PHASE, 'phase-8b-host-adapter-contracts');
 });
 
 test('mission state transitions are explicit and reject invalid transitions', () => {

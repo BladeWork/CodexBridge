@@ -533,7 +533,7 @@ function createMissionFromAgentJob(
 function createSyntheticAttempt(
   job: AgentJob,
   attemptIndex: number,
-  status: 'running' | 'verifying' | 'repairing' | 'completed' | 'failed' | 'queued' | 'stopped',
+  status: MissionAttemptStatus,
 ): MissionAttempt {
   return {
     id: `${job.id}-attempt-${attemptIndex}`,

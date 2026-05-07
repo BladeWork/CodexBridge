@@ -57,12 +57,22 @@ Main remaining integration gap:
   - mission summary/detail/timeline/attempt/execution queries
   - retry / resume / stop commands
   - transport-neutral boundary metadata
+- Phase 8b now adds an explicit exported host adapter contract for:
+  - session/thread binding
+  - progress and approval forwarding
+  - artifact publication / notification hooks
+  - host context lookup
 - `/agent` `list/show/stop/retry` now consume that package API through an
   `AgentJob`-backed host adapter repository instead of rebuilding runtime truth
   directly from bridge compatibility fields
-- the next hardening work is pushing the remaining read/control paths and
-  `AgentJob` projection cleanup onto the same package-owned surface, so future
-  Telegram, CLI, or web hosts do not re-implement bridge-local runtime logic
+- `/agent runAgentJob` now routes its current host-owned session/thread binding,
+  progress, approval forwarding, and artifact-publication seams through that
+  host adapter contract instead of wiring those concerns straight through the
+  runner
+- the next hardening work is finishing `AgentJob` projection cleanup and moving
+  the remaining read/control paths onto the same package-owned surface, so
+  future Telegram, CLI, or web hosts do not re-implement bridge-local runtime
+  logic
 
 ## V0 Migration Baseline Sources
 

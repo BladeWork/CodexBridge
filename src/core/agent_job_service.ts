@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import {
   DirectMissionControlApi,
+  type MissionExecutionView,
   shouldMissionRetryReuseAccumulatedContext,
   type MissionDetailView,
   type MissionSummaryView,
@@ -81,6 +82,15 @@ export class AgentJobService {
   getMissionDetail(id: string): MissionDetailView | null {
     return this.createMissionControlApi().queries.getMissionDetail({
       meta: this.createMissionControlMeta(`agent-detail:${id}`),
+      input: {
+        missionId: id,
+      },
+    }).data;
+  }
+
+  getMissionExecution(id: string): MissionExecutionView | null {
+    return this.createMissionControlApi().queries.getMissionExecution({
+      meta: this.createMissionControlMeta(`agent-execution:${id}`),
       input: {
         missionId: id,
       },

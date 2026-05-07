@@ -7805,6 +7805,8 @@ test('/agent list, show, result, stop, and retry prefer Mission Control runtime 
     const session = runtime.services.bridgeSessions.getSessionById(job.bridgeSessionId);
     const missionUpdatedAt = Date.now();
     const attemptId = `${job.id}-mission-attempt-1`;
+    const runtimeArtifactPath = path.join(os.tmpdir(), `${job.id}-mission-runtime-report.md`);
+    fs.writeFileSync(runtimeArtifactPath, '# Mission Control report\n');
     const completedState = {
       mission: {
         id: job.id,
@@ -7836,7 +7838,13 @@ test('/agent list, show, result, stop, and retry prefer Mission Control runtime 
         stoppedAt: null,
         lastResultPreview: 'Mission Control 已完成结果。',
         resultText: 'Mission Control 已完成结果。\n\n验证通过，所有验收项已满足。',
-        resultArtifacts: [],
+        resultArtifacts: [{
+          type: 'file',
+          path: runtimeArtifactPath,
+          name: 'mission-runtime-report.md',
+          mimeType: 'text/markdown',
+          caption: 'Mission Control report',
+        }],
         lastError: null,
         statusReason: '修复已通过验证。',
         pendingApproval: null,
@@ -7883,7 +7891,16 @@ test('/agent list, show, result, stop, and retry prefer Mission Control runtime 
       completedAt: null,
       lastResultPreview: 'stale preview',
       resultText: 'stale wrong result',
-      resultArtifacts: null,
+      resultArtifacts: [{
+        kind: 'file',
+        path: '/tmp/stale-artifact.txt',
+        displayName: 'stale-artifact.txt',
+        mimeType: 'text/plain',
+        sizeBytes: 12,
+        caption: 'stale artifact',
+        source: 'provider_native',
+        turnId: null,
+      }],
       lastError: 'stale error',
       verificationSummary: 'stale verification',
       missionWorkpadLatestBlocker: 'stale blocker',
@@ -7911,6 +7928,8 @@ test('/agent list, show, result, stop, and retry prefer Mission Control runtime 
     const showCompletedText = showCompleted.messages.map((message) => message.text).join('\n');
     assert.match(showCompletedText, /Mission Control 最终摘要。/);
     assert.match(showCompletedText, /修复已通过验证。/);
+    assert.match(showCompletedText, /mission-runtime-report\.md/);
+    assert.doesNotMatch(showCompletedText, /stale-artifact\.txt/);
     assert.doesNotMatch(showCompletedText, /stale verification/);
 
     const result = await runtime.services.bridgeCoordinator.handleInboundEvent({

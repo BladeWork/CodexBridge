@@ -42,6 +42,7 @@ import type {
   AgentJobCategory,
   AgentJobMode,
   AgentJobRiskLevel,
+  AgentJobStatus,
   AssistantRecord,
   AssistantRecordPriority,
   AssistantRecordStatus,
@@ -6868,6 +6869,11 @@ export class BridgeCoordinator {
 
   resolveAgentJobArtifacts(job: AgentJob): TurnArtifactDeliveredItem[] {
     const effectiveJob = createMissionControlledAgentJobView(job);
+    const missionExecution = this.agentJobs?.getMissionExecution(effectiveJob.id);
+    const projectedArtifacts = normalizeMissionExecutionArtifacts(missionExecution?.artifactRefs ?? null);
+    if (projectedArtifacts.length > 0) {
+      return projectedArtifacts;
+    }
     const direct = normalizeAgentArtifacts(effectiveJob.resultArtifacts ?? null);
     if (direct.length > 0) {
       return direct;
@@ -13208,6 +13214,32 @@ function sanitizeFilename(value: string): string {
 
 function normalizeAgentArtifactsForStorage(artifacts: OutputArtifact[]): TurnArtifactDeliveredItem[] {
   return normalizeAgentArtifacts(artifacts);
+}
+
+function normalizeMissionExecutionArtifacts(value: unknown): TurnArtifactDeliveredItem[] {
+  const items = Array.isArray(value) ? value : [];
+  return items
+    .map((item) => {
+      const pathValue = String(item?.path ?? '').trim();
+      if (!pathValue) {
+        return null;
+      }
+      const kind = normalizeAgentArtifactKind(item?.type);
+      if (!kind) {
+        return null;
+      }
+      return {
+        kind,
+        path: pathValue,
+        displayName: normalizeNullableDisplayString(item?.name),
+        mimeType: normalizeNullableDisplayString(item?.mimeType),
+        sizeBytes: null,
+        caption: normalizeNullableDisplayString(item?.caption),
+        source: 'provider_native' as const,
+        turnId: null,
+      };
+    })
+    .filter(Boolean) as TurnArtifactDeliveredItem[];
 }
 
 function normalizeAgentArtifacts(value: unknown): TurnArtifactDeliveredItem[] {

@@ -1,5 +1,6 @@
 import {
   MissionRuntime,
+  type MissionHostAdapter,
   createMission,
   createMissionVerifierResult,
   isMissionResumable,
@@ -25,6 +26,7 @@ import {
 } from '../../packages/mission-control/src/index.js';
 import { AgentJobService } from './agent_job_service.js';
 import { AgentJobMissionRepository as AgentJobMissionStateRepository } from './mission_control_agent_job_repository.js';
+import { CodexBridgeMissionHostAdapter } from './mission_control_host_adapter.js';
 import type {
   AgentJob,
   AgentJobAttemptHistoryEntry,
@@ -146,29 +148,41 @@ export async function runAgentJobWithMissionControl(
     repository,
     now,
   });
-  const syncBridgeSession = (nextSession: BridgeSession) => {
+  const bindThread = (input: {
+    missionId: string;
+    bridgeSessionId: string | null;
+    providerThreadId: string | null;
+  }) => {
     const currentJob = options.agentJobs.getById(options.job.id);
-    if (currentJob && currentJob.bridgeSessionId !== nextSession.id) {
+    if (currentJob && input.bridgeSessionId && currentJob.bridgeSessionId !== input.bridgeSessionId) {
       options.agentJobs.updateJob(currentJob.id, {
-        bridgeSessionId: nextSession.id,
+        bridgeSessionId: input.bridgeSessionId,
       });
     }
-    const currentMission = repository.getMissionById(options.job.id);
+    const currentMission = repository.getMissionById(input.missionId);
     if (
       currentMission
       && (
-        currentMission.bridgeSessionId !== nextSession.id
-        || currentMission.codexThreadId !== nextSession.codexThreadId
+        currentMission.bridgeSessionId !== input.bridgeSessionId
+        || currentMission.codexThreadId !== input.providerThreadId
       )
     ) {
       repository.saveMission({
         ...currentMission,
-        bridgeSessionId: nextSession.id,
-        codexThreadId: nextSession.codexThreadId,
+        bridgeSessionId: input.bridgeSessionId,
+        codexThreadId: input.providerThreadId,
         updatedAt: now(),
       });
     }
   };
+  const hostAdapter = new CodexBridgeMissionHostAdapter({
+    jobId: options.job.id,
+    resolveJob: () => options.agentJobs.getById(options.job.id) ?? options.job,
+    resolveSession: () => options.resolveSession(options.agentJobs.getById(options.job.id) ?? options.job),
+    bindThread,
+    onProgress: options.onProgress ?? null,
+    onApprovalRequest: options.onApprovalRequest ?? null,
+  });
   const provider = new BridgeMissionProvider({
     jobId: options.job.id,
     scopeRef,
@@ -177,9 +191,7 @@ export async function runAgentJobWithMissionControl(
     startTurnWithRecovery: options.startTurnWithRecovery,
     stopSession: options.stopSession,
     progressText: options.progressText,
-    onProgress: options.onProgress ?? null,
-    onApprovalRequest: options.onApprovalRequest ?? null,
-    syncBridgeSession,
+    hostAdapter,
   });
   const verifier = new BridgeMissionVerifier({
     jobId: options.job.id,
@@ -187,7 +199,7 @@ export async function runAgentJobWithMissionControl(
     provider,
     verifyJob: options.verifyJob,
     progressText: options.progressText,
-    onProgress: options.onProgress ?? null,
+    hostAdapter,
   });
 
   const runtime = new MissionRuntime({
@@ -429,9 +441,7 @@ class BridgeMissionProvider implements MissionProvider {
     startTurnWithRecovery: RunAgentJobWithMissionControlOptions['startTurnWithRecovery'];
     stopSession: RunAgentJobWithMissionControlOptions['stopSession'];
     progressText: MissionControlAgentJobRunProgressText;
-    onProgress: ProgressHandler;
-    onApprovalRequest: ApprovalHandler;
-    syncBridgeSession: (session: BridgeSession) => void;
+    hostAdapter: MissionHostAdapter;
   }) {}
 
   async start(input: MissionExecutionInput) {
@@ -471,12 +481,16 @@ class BridgeMissionProvider implements MissionProvider {
     if (!session) {
       throw new Error('Agent mission session is missing.');
     }
+    const hostContext = await this.options.hostAdapter.getContext(input.mission.id);
     if (!this.runningAttempts.has(input.attempt.id)) {
       this.runningAttempts.add(input.attempt.id);
-      await emitProgress(
-        this.options.onProgress,
-        this.options.progressText.running(input.attempt.index, input.mission.maxAttempts),
-      );
+      await this.options.hostAdapter.publishProgress({
+        missionId: input.mission.id,
+        attemptId: input.attempt.id,
+        status: 'running',
+        text: this.options.progressText.running(input.attempt.index, input.mission.maxAttempts),
+        outputKind: 'commentary',
+      });
     }
     this.runCounter += 1;
     const runId = `${input.attempt.id}-provider-turn-${this.runCounter}`;
@@ -486,13 +500,13 @@ class BridgeMissionProvider implements MissionProvider {
       {
         platform: input.mission.platform,
         externalScopeId: input.mission.externalScopeId,
-        text: buildAgentMissionExecutionPrompt(input.promptText, liveJob.locale),
+        text: buildAgentMissionExecutionPrompt(input.promptText, hostContext.locale ?? liveJob.locale),
         cwd: liveJob.cwd ?? input.mission.cwd,
-        locale: liveJob.locale,
+        locale: hostContext.locale ?? liveJob.locale,
         attachments: [],
         metadata: {
           codexbridge: {
-            overrideBridgeSessionId: session.id,
+            overrideBridgeSessionId: hostContext.bridgeSessionId ?? session.id,
             agentJobId: this.options.jobId,
             agentAttempt: input.attempt.index,
             missionId: input.mission.id,
@@ -501,12 +515,36 @@ class BridgeMissionProvider implements MissionProvider {
         },
       },
       {
-        onProgress: this.options.onProgress,
-        onApprovalRequest: this.options.onApprovalRequest,
+        onProgress: async (progress) => {
+          await this.options.hostAdapter.publishProgress({
+            missionId: input.mission.id,
+            attemptId: input.attempt.id,
+            status: 'running',
+            text: progress.text ?? progress.delta,
+            outputKind: progress.outputKind === 'status' ? 'status' : 'commentary',
+            details: {
+              delta: progress.delta,
+            },
+          });
+        },
+        onApprovalRequest: async (request) => {
+          await this.options.hostAdapter.requestApproval(buildMissionHostApprovalRequest(input, request));
+        },
       },
     );
-    this.options.syncBridgeSession(execution.session);
     const normalizedResult = normalizeBridgeMissionProviderResult(execution.result);
+    await this.options.hostAdapter.bindProviderThread({
+      missionId: input.mission.id,
+      bridgeSessionId: execution.session.id,
+      providerThreadId: execution.session.codexThreadId,
+    });
+    if (normalizedResult.artifacts.length > 0) {
+      await this.options.hostAdapter.publishArtifacts({
+        missionId: input.mission.id,
+        attemptId: input.attempt.id,
+        artifacts: normalizedResult.artifacts,
+      });
+    }
     const record: BridgeMissionExecutionRecord = {
       ...execution,
       normalizedResult: normalizedResult.outcome === 'interrupted' && !liveJob.stopRequested
@@ -542,7 +580,7 @@ class BridgeMissionVerifier implements MissionVerifier {
     provider: BridgeMissionProvider;
     verifyJob: RunAgentJobWithMissionControlOptions['verifyJob'];
     progressText: MissionControlAgentJobRunProgressText;
-    onProgress: ProgressHandler;
+    hostAdapter: MissionHostAdapter;
   }) {}
 
   async verify(input: {
@@ -550,7 +588,13 @@ class BridgeMissionVerifier implements MissionVerifier {
     attempt: MissionAttempt;
     providerResult: MissionProviderResult;
   }): Promise<MissionVerifierResult> {
-    await emitProgress(this.options.onProgress, this.options.progressText.verifying());
+    await this.options.hostAdapter.publishProgress({
+      missionId: input.mission.id,
+      attemptId: input.attempt.id,
+      status: 'verifying',
+      text: this.options.progressText.verifying(),
+      outputKind: 'commentary',
+    });
     const currentJob = this.options.agentJobs.getById(this.options.jobId);
     if (!currentJob) {
       return createMissionVerifierResult({
@@ -567,8 +611,27 @@ class BridgeMissionVerifier implements MissionVerifier {
       execution?.session ?? null,
     );
     if (!verification.pass && verification.nextAction === 'retry') {
-      await emitProgress(this.options.onProgress, this.options.progressText.retrying());
+      await this.options.hostAdapter.publishProgress({
+        missionId: input.mission.id,
+        attemptId: input.attempt.id,
+        status: 'repairing',
+        text: this.options.progressText.retrying(),
+        outputKind: 'commentary',
+      });
     }
+    await this.options.hostAdapter.notify({
+      missionId: input.mission.id,
+      attemptId: input.attempt.id,
+      status: verification.pass || verification.nextAction === 'complete'
+        ? 'completed'
+        : verification.nextAction === 'retry'
+          ? 'repairing'
+          : 'failed',
+      summary: verification.summary,
+      details: verification.issues.length > 0
+        ? { issues: [...verification.issues] }
+        : null,
+    });
     return createMissionVerifierResult({
       verdict: verification.pass || verification.nextAction === 'complete'
         ? 'complete'
@@ -584,7 +647,7 @@ class BridgeMissionVerifier implements MissionVerifier {
 function prepareMissionSnapshot(input: {
   job: AgentJob;
   session: BridgeSession | null;
-  repository: AgentJobMissionRepository;
+  repository: MissionRepository;
   now: () => number;
 }): Mission {
   const existing = input.repository.getMissionById(input.job.id);
@@ -831,6 +894,34 @@ function missionProviderResultToBridgeResult(result: MissionProviderResult): Bri
   };
 }
 
+function buildMissionHostApprovalRequest(
+  input: MissionExecutionInput,
+  request: ProviderApprovalRequest,
+) {
+  return {
+    missionId: input.mission.id,
+    attemptId: input.attempt.id,
+    requestId: request.requestId,
+    kind: 'provider' as const,
+    summary: compactString(request.reason)
+      ?? compactString(request.command)
+      ?? 'Provider approval is required before the mission can continue.',
+    options: normalizeProviderApprovalOptions(request.availableDecisionKeys),
+    details: {
+      command: request.command ?? null,
+      cwd: request.cwd ?? null,
+      turnId: request.turnId ?? null,
+      itemId: request.itemId ?? null,
+      fileChanges: request.fileChanges ?? [],
+      grantRoot: request.grantRoot ?? null,
+      networkPermission: request.networkPermission ?? null,
+      fileReadPermissions: request.fileReadPermissions ?? [],
+      fileWritePermissions: request.fileWritePermissions ?? [],
+      execPolicyAmendment: request.execPolicyAmendment ?? [],
+    },
+  };
+}
+
 function buildAgentMissionExecutionPrompt(promptText: string, locale: string | null): string {
   const prefix = locale === 'zh-CN'
     ? '你正在执行 CodexBridge 后台 Agent 任务。请用中文回复最终结果。\n最终回复必须包含：摘要、验证结果、产物或后续动作。'
@@ -878,21 +969,6 @@ function upsertById<T extends { id: string }>(items: T[], value: T): T[] {
   return next;
 }
 
-async function emitProgress(handler: ProgressHandler, text: string): Promise<void> {
-  if (typeof handler !== 'function') {
-    return;
-  }
-  const normalized = compactString(text);
-  if (!normalized) {
-    return;
-  }
-  await handler({
-    text: normalized,
-    delta: normalized,
-    outputKind: 'commentary',
-  });
-}
-
 function compactString(value: unknown): string | null {
   const normalized = String(value ?? '').trim();
   return normalized.length > 0 ? normalized : null;
@@ -900,6 +976,24 @@ function compactString(value: unknown): string | null {
 
 function cloneValue<T>(value: T): T {
   return structuredClone(value);
+}
+
+function normalizeProviderApprovalOptions(
+  decisionKeys: string[] | null | undefined,
+): Array<{ index: number; label: string; description: string | null }> {
+  const normalized = Array.isArray(decisionKeys)
+    ? decisionKeys
+      .map((value) => compactString(value))
+      .filter(Boolean) as string[]
+    : [];
+  if (normalized.length === 0) {
+    return [{ index: 1, label: 'Approve', description: null }];
+  }
+  return normalized.map((label, index) => ({
+    index: index + 1,
+    label,
+    description: null,
+  }));
 }
 
 const ACTIVE_MISSION_JOB_STATUS_SET = new Set<MissionStatus>([
