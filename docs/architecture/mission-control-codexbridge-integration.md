@@ -103,6 +103,17 @@ Main remaining integration gap:
   - stopped attempts can now be derived from authoritative mission history even
     after stale-lease recovery clears `activeAttemptId`, so package supervision
     remains the authority for stop reconciliation instead of bridge-local state
+- Phase 9e now adds the first real local todo source adapter for the
+  CodexBridge host:
+  - assistant-record todos can now be normalized as
+    `source=local-todo` `WorkItemSourceSummary` items through a bridge-side
+    adapter while keeping assistant-record storage fully host-owned
+  - structured goal / expected output / acceptance criteria / plan payloads are
+    preserved in that local source together with source metadata and a
+    deterministic `sourceRevision`
+  - if host-side todo edits diverge from the structured payload digest, the
+    adapter falls back to the live todo content instead of pretending the stale
+    cached checklist is authoritative
 - `/agent` `list/show/stop/retry` now consume that package API through an
   authoritative mission repository plus `AgentJob` projection instead of
   rebuilding runtime truth directly from bridge compatibility fields
@@ -114,11 +125,11 @@ Main remaining integration gap:
   persists through the package-owned progress sink so mission workpad/timeline
   state can retain bridge-delivered progress without letting the host mutate
   lifecycle truth directly
-- the next hardening work is finishing source sync beyond initial manual
-  creation, reducing long-lived `loop.sh` reliance to a real operational
-  fallback, and continuing to thin the remaining bridge projection seams so
-  future Telegram, CLI, or web hosts do not re-implement bridge-local runtime
-  logic
+- the next hardening work is finishing source sync/reconciliation beyond the
+  current manual create path plus first local todo adapter, reducing long-lived
+  `loop.sh` reliance to a real operational fallback, and continuing to thin the
+  remaining bridge projection seams so future Telegram, CLI, or web hosts do
+  not re-implement bridge-local runtime logic
 
 ## V0 Migration Baseline Sources
 

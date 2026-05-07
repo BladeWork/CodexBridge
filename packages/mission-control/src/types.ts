@@ -18,6 +18,7 @@ export type MissionSource =
   | 'weixin'
   | 'telegram'
   | 'assistant-record'
+  | 'local-todo'
   | 'github'
   | 'linear'
   | 'cli'

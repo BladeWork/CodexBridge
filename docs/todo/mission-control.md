@@ -581,16 +581,25 @@ projection first. Stale-lease recovery no longer prevents the package from
 marking the latest non-terminal attempt as `stopped` when a stop request is
 already persisted.
 
-Phase 9d is the current validated baseline, but several behaviors above are
+Phase 9e landed: CodexBridge now exposes a first real local todo
+`WorkItemSourceAdapter` on top of assistant-record todos while keeping that
+store fully host-owned. The adapter normalizes those records into
+`source=local-todo` work items, preserves structured
+goal/output/acceptance/plan payloads plus source metadata, derives a stable
+`sourceRevision` from local record state, and falls back to the live todo
+content whenever host-side edits invalidate the structured payload digest.
+
+Phase 9e is the current validated baseline, but several behaviors above are
 still transitional:
 
 - `AgentJob` still carries bridge-side compatibility state that should keep
   shrinking toward a pure projection/cache
 - `/agent` reads still need to move further toward package-owned
   command/query/timeline contracts
-- source-backed mission sync beyond the initial manual create path and final
-  `loop.sh` fallback reduction still belong to the unfinished `Phase 9`
-  backlog
+- source-backed mission sync now reaches both the initial manual create path
+  and a first assistant-record-backed `local-todo` adapter, but broader source
+  sync/reconciliation and final `loop.sh` fallback reduction still belong to
+  the unfinished `Phase 9` backlog
 
 ## Phase 7: Checklist-First Domain Hardening
 
@@ -700,10 +709,17 @@ authoritative request instead of requiring bridge-local fake terminal writes
 first. Stopped attempts can now still be derived after stale-lease recovery
 clears `activeAttemptId`, so supervision owns stop reconciliation end-to-end.
 
+Phase 9e landed: CodexBridge now contributes a first real local todo source
+adapter on top of assistant-record todos without pulling assistant-record
+storage into the package. That adapter emits normalized `source=local-todo`
+work items plus source revisions, preserves structured goal/output/checklist
+payloads in the host-owned local source, and falls back to the live todo
+content when host-side edits invalidate that structured payload digest.
+
 - [x] Add `WorkItemSourceAdapter` as the source abstraction
 - [x] Support manual host-created source-backed work items through the
   package-owned create command
-- [ ] Support local todo/checklist source adapters
+- [x] Support local todo/checklist source adapters
 - [ ] Support future issue/board integrations
 - [x] Keep external checklist/source truth separate from internal immutable
   `ChecklistSnapshot` runtime copies

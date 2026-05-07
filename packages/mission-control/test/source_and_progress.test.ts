@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import {
   JsonFileMissionRepository,
+  createWorkItemSourceSummary,
   createManualWorkItemSourceSummary,
   createMission,
   createMissionChecklistSnapshot,
@@ -13,8 +14,21 @@ import {
   type MissionAttempt,
 } from '../src/index.js';
 
-test('manual work item source summaries normalize source-backed checklist fields', () => {
-  const summary = createManualWorkItemSourceSummary({
+test('work item source summaries normalize source-backed checklist fields for local todo sources', () => {
+  const summary = createWorkItemSourceSummary({
+    source: 'local-todo',
+    sourceRef: 'todo-1',
+    sourceRevision: 'rev-local-1',
+    title: '  Repair the flaky preview test  ',
+    goal: '  Keep the preview flow stable. ',
+    expectedOutput: ' Verified repair summary. ',
+    acceptanceCriteria: [' Patch exists ', ' ', 'Tests pass'],
+    plan: [' Inspect failures ', '', 'Re-run tests'],
+    metadata: {
+      owner: 'mission-control',
+    },
+  });
+  const manualAlias = createManualWorkItemSourceSummary({
     source: 'manual',
     sourceRef: 'manual:todo-1',
     sourceRevision: 'rev-1',
@@ -28,15 +42,17 @@ test('manual work item source summaries normalize source-backed checklist fields
     },
   });
 
-  assert.equal(summary.source, 'manual');
-  assert.equal(summary.sourceRef, 'manual:todo-1');
-  assert.equal(summary.sourceRevision, 'rev-1');
+  assert.equal(summary.source, 'local-todo');
+  assert.equal(summary.sourceRef, 'todo-1');
+  assert.equal(summary.sourceRevision, 'rev-local-1');
   assert.equal(summary.title, 'Repair the flaky preview test');
   assert.equal(summary.goal, 'Keep the preview flow stable.');
   assert.equal(summary.expectedOutput, 'Verified repair summary.');
   assert.deepEqual(summary.acceptanceCriteria, ['Patch exists', 'Tests pass']);
   assert.deepEqual(summary.plan, ['Inspect failures', 'Re-run tests']);
   assert.deepEqual(summary.metadata, { owner: 'mission-control' });
+  assert.equal(manualAlias.source, 'manual');
+  assert.equal(manualAlias.sourceRef, 'manual:todo-1');
 });
 
 test('checklist snapshots persist source revision and deterministic hashes', () => {

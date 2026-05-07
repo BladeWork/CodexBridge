@@ -1,6 +1,6 @@
 export const MISSION_CONTROL_PACKAGE_NAME = '@codexbridge/mission-control' as const;
 
-export const MISSION_CONTROL_PACKAGE_PHASE = 'phase-9d-persisted-stop-intents' as const;
+export const MISSION_CONTROL_PACKAGE_PHASE = 'phase-9e-local-todo-source-adapters' as const;
 
 export const MISSION_CONTROL_OWNS = [
   'mission-domain-model',

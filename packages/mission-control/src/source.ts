@@ -53,7 +53,7 @@ export interface WorkItemSourceAdapter {
   updateWorkItem(input: WorkItemSourceUpdateInput): Promise<void>;
 }
 
-export function createManualWorkItemSourceSummary(
+export function createWorkItemSourceSummary(
   input: WorkItemSourceCreateInput,
 ): WorkItemSourceSummary {
   return {
@@ -67,6 +67,12 @@ export function createManualWorkItemSourceSummary(
     plan: normalizeStringList(input.plan),
     metadata: cloneRecord(input.metadata),
   };
+}
+
+export function createManualWorkItemSourceSummary(
+  input: WorkItemSourceCreateInput,
+): WorkItemSourceSummary {
+  return createWorkItemSourceSummary(input);
 }
 
 export function createWorkItemSourceSummaryFromWorkItem(

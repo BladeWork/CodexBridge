@@ -461,7 +461,7 @@ function createMissionFromAgentJob(
   const summary = job.missionWorkpadFinalResultSummary
     ?? job.lastResultPreview
     ?? null;
-  return normalizeMissionRecord({
+  const mission = normalizeMissionRecord({
     id: job.id,
     workItemId: `${job.id}:work-item`,
     source: mapPlatformToMissionSource(job.platform),
