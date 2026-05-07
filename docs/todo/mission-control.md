@@ -638,6 +638,23 @@ still transitional:
   pristine pre-attempt refresh path with authoritative lineage retention, and a
   first assistant-record-backed `local-todo` adapter, but broader source
   sync/reconciliation still belongs to the unfinished backlog
+- the first host surface still does not gate mission start on explicit
+  user-confirmed `immutablePrompt` plus initial checklist confirmation before
+  the first autonomous cycle begins
+- the first host surface still lacks package-backed loop snapshot UX for
+  `currentCycle` / current item / overall completion / next step / blocker /
+  verifier summary, so users still fall back to external loop output more often
+  than they should
+- package/runtime support for `PlanChangeRequest`, `waiting_user`, and
+  `needs_human` exists, but the first host still needs a complete user-facing
+  resolution flow before Mission Control can be treated as a fully productized
+  looping experience
+- the formal Mission Control spec now expects explicit
+  `awaiting_checklist_confirm`, `awaiting_prompt_confirm`,
+  `scope_change_pending`, and `max_loops_reached` lifecycle semantics plus
+  package-owned `startMission` / approval / plan-change / snapshot-stream
+  control surfaces, but the concrete package boundary has not fully converged
+  on that formal contract yet
 
 ## Phase 7: Checklist-First Domain Hardening
 
@@ -793,6 +810,35 @@ history.
   first attempt starts
 - [x] Add package-owned workflow/checklist/workpad read models so hosts can
   render authoritative mission state without bridge-local reconstruction
+- [ ] Reconcile the concrete package status machine with the formal spec around
+  explicit:
+  - `awaiting_checklist_confirm`
+  - `awaiting_prompt_confirm`
+  - `scope_change_pending`
+  - `max_loops_reached`
+- [ ] Add package-owned command coverage for:
+  - `startMission`
+  - approval resolution
+  - plan-change resolution
+- [ ] Add package-owned mission snapshot subscription/read surfaces that map
+  cleanly onto the formal `streamMissionSnapshots` / loop-status model
+- [ ] Expose first-host start gates for `awaiting_checklist_confirm` and
+  `awaiting_prompt_confirm` before the first autonomous cycle begins
+- [ ] Require the first host to persist and explicitly confirm the
+  `immutablePrompt` plus initial checklist snapshot instead of treating
+  `/agent confirm` as a generic background-job launch
+- [ ] Add package-backed mission snapshot views to the first host so users can
+  observe loop status through:
+  - current cycle
+  - current stage / checklist item
+  - overall completion
+  - next step
+  - latest blocker / verifier summary
+- [ ] Add first-host resolution flows for `PlanChangeRequest`,
+  `waiting_user`, `needs_human`, and related paused states without requiring
+  raw shell/loop log inspection
+- [ ] Let the first host start and continue a checklist-backed looping mission
+  without external `loop.sh` as the primary user-facing control surface
 - [ ] Support future issue/board integrations
 - [x] Keep external checklist/source truth separate from internal immutable
   `ChecklistSnapshot` runtime copies
@@ -816,6 +862,14 @@ Completion criteria:
 - [x] The runtime can recover, continue, and report progress using package-owned
   supervision semantics
 - [x] External shell supervision is optional, not structurally required
+- [ ] The concrete package commands/status model converges with the formal spec
+  for confirmation, paused-state, and loop-budget lifecycle control
+- [ ] A first host can require explicit `immutablePrompt` plus initial
+  checklist confirmation before the first autonomous cycle starts
+- [ ] A first host can inspect package-owned cycle/stage/completion snapshots
+  and resolve plan changes or paused states without reading shell logs
+- [ ] A user can run a checklist-backed looping mission from the first host
+  surface without external `loop.sh` as the primary UX
 
 ## Phase 10: Service Exposure and Additional Hosts
 
@@ -865,3 +919,13 @@ Mission Control is ready for broader extraction when:
 - [x] a later Telegram, web, or other host surface can integrate without
   changing mission core behavior
 - [x] `/auto` remains fully outside Mission Control ownership
+- [ ] the concrete package API/state machine matches the formal spec for
+  `startMission`, approval / plan-change resolution, snapshot streaming, and
+  confirmation/budget states
+- [ ] the first host can persist and confirm an immutable prompt plus initial
+  checklist before autonomous looping begins
+- [ ] the first host can render package-owned loop snapshots and resolve
+  `PlanChangeRequest` / `waiting_user` / `needs_human` without shell-log
+  inspection
+- [ ] the first host can drive a checklist-backed looping mission as product
+  UX without depending on external `loop.sh`

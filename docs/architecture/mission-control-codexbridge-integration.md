@@ -175,6 +175,9 @@ Main remaining integration gap:
   - the proof does not import CodexBridge runtime/store/i18n layers, so the
     same mission core behavior is now validated outside the `/agent`
     integration path
+  - this later-host proof does not yet mean the first host UX is complete:
+    CodexBridge still needs explicit prompt/checklist confirmation gates plus
+    paused-state and loop-snapshot surfaces on top of the package contract
 - `/agent` `list/show/stop/retry` now consume that package API through an
   authoritative mission repository plus `AgentJob` projection instead of
   rebuilding runtime truth directly from bridge compatibility fields
@@ -188,8 +191,14 @@ Main remaining integration gap:
   lifecycle truth directly
 - the next hardening work is wiring broader source sync/reconciliation triggers
   beyond the current manual create path, append-oriented pristine pre-attempt
-  sync path, and first local todo adapter; and continuing to shrink `AgentJob`
-  compatibility caches
+  sync path, and first local todo adapter; continuing to shrink `AgentJob`
+  compatibility caches; and finishing the first-host product flow around:
+  - explicit `immutablePrompt` confirmation before the first autonomous cycle
+  - explicit initial checklist confirmation before the first autonomous cycle
+  - host-side resolution for `PlanChangeRequest`, `waiting_user`, and
+    `needs_human`
+  - package-backed mission snapshot UX for cycle/stage/completion/next-step
+    visibility without raw shell-log inspection
 
 ## V0 Migration Baseline Sources
 
