@@ -215,6 +215,23 @@ test('responsesRequestToChatCompletions uses MiniMax preset without a dedicated 
   assert.equal(chat.tools[0].function.name, 'lookup');
 });
 
+test('responsesRequestToChatCompletions maps qwen builtin web search to enable_search', () => {
+  const preset = getOpenAICompatibleProviderPreset('qwen');
+  const chat = responsesRequestToChatCompletions({
+    model: 'qwen-plus',
+    input: '联网搜索杭州明天天气',
+    tools: [{ type: 'web_search' }],
+    tool_choice: 'web_search',
+  }, {
+    providerKind: 'openai-compatible',
+    providerCapabilities: preset.capabilities,
+  });
+
+  assert.equal(chat.enable_search, true);
+  assert.equal(chat.tools, undefined);
+  assert.equal(chat.tool_choice, undefined);
+});
+
 test('responsesRequestToChatCompletions applies CLIProxy-style iFlow boolean thinking rules', () => {
   const preset = getOpenAICompatibleProviderPreset('iflow');
   const qwen = responsesRequestToChatCompletions({

@@ -29,6 +29,7 @@ export interface CliproxyModelCatalogEntry {
   description?: string;
   maxOutputTokens?: number;
   supportedParameters?: string[];
+  webSearch?: boolean;
   thinking?: {
     levels?: string[];
     min?: number;
@@ -123,9 +124,12 @@ const KIMI_MODELS: CliproxyModelCatalogEntry[] = [
 const QWEN_MODELS: CliproxyModelCatalogEntry[] = [
   model('qwen', 'qwen-plus', 'qwen', 'Qwen Plus', null, {
     maxOutputTokens: 65536,
-    supportedParameters: ['temperature', 'top_p', 'max_tokens', 'stream', 'stop'],
+    supportedParameters: ['temperature', 'top_p', 'max_tokens', 'stream', 'stop', 'tools', 'response_format'],
+    webSearch: true,
   }),
-  model('qwen', 'qwen3-coder-plus', 'qwen', 'Qwen3 Coder Plus'),
+  model('qwen', 'qwen3-coder-plus', 'qwen', 'Qwen3 Coder Plus', null, {
+    supportedParameters: ['temperature', 'top_p', 'max_tokens', 'stream', 'stop', 'tools', 'response_format'],
+  }),
 ];
 
 const ANTIGRAVITY_MODELS: CliproxyModelCatalogEntry[] = [
@@ -251,7 +255,7 @@ function buildModelCapabilities(entry: CliproxyModelCatalogEntry): OpenAICompati
     jsonSchema: !hasExplicitSupportedParameters || supportedParameters.includes('response_format'),
     reasoning,
     thinking: buildThinkingPolicy(entry, levels),
-    webSearch: false,
+    webSearch: entry.webSearch === true,
     parallelToolCalls: !isMiniMaxModel(id),
     maxOutputTokens: entry.maxOutputTokens,
     payload: buildModelPayloadCompatibility(entry),

@@ -310,6 +310,7 @@ class OpenAICompatibleCodexClient {
       providerKind: normalizeString(this.profile.providerKind) || this.options.defaults.kind,
       providerName: this.profile.displayName || this.options.defaults.displayName,
       providerCapabilities,
+      upstreamResponsesPath: providerCapabilities?.upstreamResponsesPath ?? null,
       upstreamChatCompletionsPath: normalizeString(config.upstreamChatCompletionsPath) || this.options.defaults.upstreamChatCompletionsPath,
       ownedBy: normalizeString(config.ownedBy) || this.options.defaults.ownedBy,
     });

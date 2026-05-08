@@ -137,6 +137,8 @@ const PRESETS: Record<OpenAICompatibleCapabilityPresetId, OpenAICompatibleProvid
     ownedBy: 'qwen',
     categories: ['qwen'],
     extraCapabilities: {
+      supportsBuiltinWebSearchTool: true,
+      builtinWebSearchTransport: 'chat_enable_search',
       multimodal: TEXT_ONLY_MULTIMODAL,
     },
   }),

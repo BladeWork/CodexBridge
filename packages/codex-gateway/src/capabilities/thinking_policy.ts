@@ -110,8 +110,10 @@ export interface OpenAICompatibleModelCapabilities {
 
 export interface OpenAICompatibleProviderCapabilities {
   supportsBuiltinWebSearchTool?: boolean;
+  builtinWebSearchTransport?: 'openai_tool' | 'chat_enable_search';
   supportsTools?: boolean;
   supportsResponsesCompact?: boolean;
+  upstreamResponsesPath?: string | null;
   upstreamResponsesCompactPath?: string | null;
   thinking?: OpenAICompatibleThinkingPolicyOverrides | null;
   payload?: OpenAICompatiblePayloadCompatibility | null;
@@ -291,11 +293,17 @@ export function mergeOpenAICompatibleProviderCapabilities(
     if (entry.supportsBuiltinWebSearchTool !== undefined) {
       merged.supportsBuiltinWebSearchTool = Boolean(entry.supportsBuiltinWebSearchTool);
     }
+    if (entry.builtinWebSearchTransport !== undefined) {
+      merged.builtinWebSearchTransport = normalizeBuiltinWebSearchTransport(entry.builtinWebSearchTransport);
+    }
     if (entry.supportsTools !== undefined) {
       merged.supportsTools = Boolean(entry.supportsTools);
     }
     if (entry.supportsResponsesCompact !== undefined) {
       merged.supportsResponsesCompact = Boolean(entry.supportsResponsesCompact);
+    }
+    if (entry.upstreamResponsesPath !== undefined) {
+      merged.upstreamResponsesPath = normalizeString(entry.upstreamResponsesPath) || null;
     }
     if (entry.upstreamResponsesCompactPath !== undefined) {
       merged.upstreamResponsesCompactPath = normalizeString(entry.upstreamResponsesCompactPath) || null;
@@ -594,6 +602,19 @@ function normalizeRetryStatuses(value: unknown): number[] | null {
     .map((entry) => Number(entry))
     .filter((entry) => Number.isInteger(entry) && entry >= 100 && entry <= 599);
   return statuses.length > 0 ? [...new Set(statuses)] : null;
+}
+
+function normalizeBuiltinWebSearchTransport(
+  value: unknown,
+): 'openai_tool' | 'chat_enable_search' | undefined {
+  const normalized = normalizeString(value);
+  switch (normalized) {
+    case 'openai_tool':
+    case 'chat_enable_search':
+      return normalized;
+    default:
+      return undefined;
+  }
 }
 
 function normalizeReasoningEffort(value: unknown): string | null {

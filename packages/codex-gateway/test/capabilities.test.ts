@@ -89,6 +89,25 @@ test('package model catalogs expose normalized capability catalog metadata', () 
   });
 });
 
+test('qwen preset exposes builtin web search through chat enable_search transport', () => {
+  const preset = getOpenAICompatibleProviderPreset('qwen');
+  const catalog = buildOpenAICompatibleModelCatalog({
+    defaultModel: preset.defaultModel,
+    modelIds: [preset.defaultModel],
+    displayName: preset.displayName,
+    capabilities: preset.capabilities,
+  });
+
+  assert.equal(preset.capabilities?.supportsBuiltinWebSearchTool, true);
+  assert.equal(preset.capabilities?.builtinWebSearchTransport, 'chat_enable_search');
+  assert.equal(catalog.length, 1);
+  assert.equal(catalog[0].capabilityCatalog.toolCalling.supported, true);
+  assert.equal(catalog[0].capabilityCatalog.toolCalling.builtinWebSearch, true);
+  assert.equal(catalog[0].capabilities?.tools, true);
+  assert.equal(catalog[0].capabilities?.jsonSchema, true);
+  assert.equal(catalog[0].capabilities?.webSearch, true);
+});
+
 test('external model catalogs normalize LiteLLM-style pricing and context metadata', () => {
   const catalog = buildOpenAICompatibleExternalModelCatalog({
     raw: {

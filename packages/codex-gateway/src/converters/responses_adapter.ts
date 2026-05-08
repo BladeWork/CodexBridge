@@ -88,6 +88,7 @@ export function responsesRequestToChatCompletions(
     messages: [],
     stream: Boolean(options.stream ?? request?.stream),
   };
+  const builtinWebSearchTransport = resolveBuiltinWebSearchTransport(providerCapabilities);
 
   copyIfPresent(request, chat, 'temperature');
   copyIfPresent(request, chat, 'top_p');
@@ -97,6 +98,12 @@ export function responsesRequestToChatCompletions(
   if (request?.max_output_tokens !== undefined) {
     chat.max_tokens = request.max_output_tokens;
   }
+  if (
+    builtinWebSearchTransport === 'chat_enable_search'
+    && requestUsesBuiltinWebSearch(request)
+  ) {
+    chat.enable_search = true;
+  }
   const toolsSupported = supportsToolCalling(providerCapabilities);
   if (toolsSupported && request?.tool_choice !== undefined) {
     chat.tool_choice = convertResponsesToolChoiceToChatToolChoice(
@@ -104,6 +111,7 @@ export function responsesRequestToChatCompletions(
       options.providerKind,
       providerCapabilities,
       toolNameMap,
+      builtinWebSearchTransport,
     );
   }
   const responseFormat = convertResponsesTextFormatToChatResponseFormat(request?.text);
@@ -140,6 +148,7 @@ export function responsesRequestToChatCompletions(
         options.providerKind,
         providerCapabilities,
         toolNameMap,
+        builtinWebSearchTransport,
       ))
       .filter(Boolean)
     : [];
@@ -508,12 +517,18 @@ function convertResponsesToolToChatTool(
   providerKind?: string | null,
   providerCapabilities: OpenAICompatibleProviderCapabilities | null = null,
   toolNameMap: ToolNameMap = new Map(),
+  builtinWebSearchTransport: 'openai_tool' | 'chat_enable_search' = 'openai_tool',
 ): JsonRecord | null {
   if (!tool || typeof tool !== 'object') {
     return null;
   }
   const type = normalizeString(tool.type);
-  const normalizedBuiltinType = normalizeBuiltinToolType(type, providerKind, providerCapabilities);
+  const normalizedBuiltinType = normalizeBuiltinToolType(
+    type,
+    providerKind,
+    providerCapabilities,
+    builtinWebSearchTransport,
+  );
   if (normalizedBuiltinType) {
     return omitUndefined({
       ...tool,
@@ -539,9 +554,15 @@ function convertResponsesToolChoiceToChatToolChoice(
   providerKind?: string | null,
   providerCapabilities: OpenAICompatibleProviderCapabilities | null = null,
   toolNameMap: ToolNameMap = new Map(),
+  builtinWebSearchTransport: 'openai_tool' | 'chat_enable_search' = 'openai_tool',
 ): unknown {
   if (typeof toolChoice === 'string') {
-    const normalizedBuiltinType = normalizeBuiltinToolType(toolChoice, providerKind, providerCapabilities);
+    const normalizedBuiltinType = normalizeBuiltinToolType(
+      toolChoice,
+      providerKind,
+      providerCapabilities,
+      builtinWebSearchTransport,
+    );
     if (normalizedBuiltinType) {
       return normalizedBuiltinType;
     }
@@ -556,7 +577,12 @@ function convertResponsesToolChoiceToChatToolChoice(
 
   const record = { ...(toolChoice as JsonRecord) };
   const rawType = normalizeString(record.type);
-  const normalizedType = normalizeBuiltinToolType(rawType, providerKind, providerCapabilities);
+  const normalizedType = normalizeBuiltinToolType(
+    rawType,
+    providerKind,
+    providerCapabilities,
+    builtinWebSearchTransport,
+  );
   if (normalizedType) {
     record.type = normalizedType;
     return omitUndefined(record);
@@ -582,7 +608,13 @@ function convertResponsesToolChoiceToChatToolChoice(
 
   if (rawType === 'allowed_tools') {
     record.tools = normalizeArray(record.tools)
-      .map((tool) => convertResponsesToolToChatTool(tool, providerKind, providerCapabilities, toolNameMap))
+      .map((tool) => convertResponsesToolToChatTool(
+        tool,
+        providerKind,
+        providerCapabilities,
+        toolNameMap,
+        builtinWebSearchTransport,
+      ))
       .filter(Boolean);
     if (record.tools.length === 0) {
       return undefined;
@@ -621,7 +653,11 @@ function normalizeBuiltinToolType(
   type: unknown,
   providerKind?: string | null,
   providerCapabilities: OpenAICompatibleProviderCapabilities | null = null,
+  builtinWebSearchTransport: 'openai_tool' | 'chat_enable_search' = 'openai_tool',
 ): string {
+  if (builtinWebSearchTransport === 'chat_enable_search') {
+    return '';
+  }
   if (!supportsBuiltinWebSearchTool(providerKind, providerCapabilities)) {
     return '';
   }
@@ -655,6 +691,33 @@ function supportsBuiltinWebSearchTool(
     return Boolean(providerCapabilities.supportsBuiltinWebSearchTool);
   }
   return true;
+}
+
+function resolveBuiltinWebSearchTransport(
+  providerCapabilities: OpenAICompatibleProviderCapabilities | null,
+): 'openai_tool' | 'chat_enable_search' {
+  return providerCapabilities?.builtinWebSearchTransport === 'chat_enable_search'
+    ? 'chat_enable_search'
+    : 'openai_tool';
+}
+
+function requestUsesBuiltinWebSearch(request: JsonRecord): boolean {
+  if (normalizeArray(request?.tools).some((tool) => isBuiltinToolType(tool?.type))) {
+    return true;
+  }
+  const toolChoice = request?.tool_choice;
+  if (typeof toolChoice === 'string') {
+    return isBuiltinToolType(toolChoice);
+  }
+  if (toolChoice && typeof toolChoice === 'object') {
+    if (isBuiltinToolType((toolChoice as JsonRecord).type)) {
+      return true;
+    }
+    if (normalizeString((toolChoice as JsonRecord).type) === 'allowed_tools') {
+      return normalizeArray((toolChoice as JsonRecord).tools).some((tool) => isBuiltinToolType(tool?.type));
+    }
+  }
+  return false;
 }
 
 function translateChatCompletionStreamData(data: string, state: StreamState): JsonRecord[] {

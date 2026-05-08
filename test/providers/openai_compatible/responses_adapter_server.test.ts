@@ -114,6 +114,60 @@ test('OpenAICompatibleResponsesAdapterServer exposes model capability metadata i
   }
 });
 
+test('OpenAICompatibleResponsesAdapterServer proxies responses requests directly when provider exposes upstream responses path', async () => {
+  let capturedUrl = '';
+  let capturedBody: any = null;
+  const server = new OpenAICompatibleResponsesAdapterServer({
+    apiKey: 'test-key',
+    upstreamBaseUrl: 'https://dashscope.example/compatible-mode/v1',
+    fetchImpl: (async (url, init) => {
+      capturedUrl = String(url);
+      capturedBody = JSON.parse(String(init?.body ?? '{}'));
+      return new Response(JSON.stringify({
+        id: 'resp_1',
+        object: 'response',
+        output: [{
+          type: 'message',
+          role: 'assistant',
+          content: [{
+            type: 'output_text',
+            text: '实时搜索结果',
+          }],
+        }],
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }) as typeof fetch,
+    providerCapabilities: {
+      supportsBuiltinWebSearchTool: true,
+      upstreamResponsesPath: '/responses',
+    },
+  });
+  await server.start();
+  try {
+    const response = await fetch(`${server.baseUrl}/v1/responses`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'qwen-plus',
+        input: '联网搜索哔哩哔哩开源工具',
+        tools: [{
+          type: 'web_search',
+        }],
+      }),
+    });
+    const body = await response.json() as any;
+    assert.equal(response.status, 200);
+    assert.equal(capturedUrl, 'https://dashscope.example/compatible-mode/v1/responses');
+    assert.equal(capturedBody.model, 'qwen-plus');
+    assert.deepEqual(capturedBody.tools, [{ type: 'web_search' }]);
+    assert.equal(body.output[0].content[0].text, '实时搜索结果');
+  } finally {
+    await server.stop();
+  }
+});
+
 test('OpenAICompatibleResponsesAdapterServer retries configured transient upstream statuses', async () => {
   let calls = 0;
   const server = new OpenAICompatibleResponsesAdapterServer({
