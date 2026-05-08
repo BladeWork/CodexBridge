@@ -934,6 +934,28 @@ Phase 9u landed: package-owned loop-budget exhaustion now also covers
   instead of relying on bridge-local heuristics or an external supervisor to
   notice repeated non-progress churn
 
+Phase 9v reopens first-host product hardening around task-quality and
+checklist stewardship before service exposure:
+
+- the current `/agent` surface now carries checklist-first fields into Mission
+  Control, but broad code tasks can still render generic lifecycle-style draft
+  plans instead of repo-aware formal checklists
+- `docs/architecture/agent-draft-templates.md` is now the reviewed source of
+  truth for first-host code/generic draft scaffolds and bounded natural-
+  language routing guidance, with the companion repo-local skill skeleton at
+  `skills/agent-draft-router/SKILL.md`; remaining implementation work should
+  follow them
+- code missions need a higher-constraint fixed prompt scaffold than generic
+  non-code missions so users confirm a real execution contract rather than a
+  vague implementation summary
+- every autonomous cycle already persists authoritative `CycleResult` and
+  checklist progression, but the runtime/host contract still needs explicit
+  emphasis that each cycle must update checklist status, overall progress,
+  blockers, and next-step state
+- AI-driven checklist refinement must remain autonomous enough to notice split /
+  append / reorder opportunities while still routing formal checklist changes
+  through package-owned `PlanChangeRequest` or another explicit policy gate
+
 - [x] Add `WorkItemSourceAdapter` as the source abstraction
 - [x] Support manual host-created source-backed work items through the
   package-owned create command
@@ -1020,6 +1042,43 @@ Phase 9u landed: package-owned loop-budget exhaustion now also covers
   state
 - [x] Reduce long-lived reliance on external `loop.sh` to an operational
   fallback once package supervision exists
+- [ ] Add first-host task-type-aware mission draft templates, starting with a
+  high-constraint `code` template and a lighter generic template for non-code
+  missions
+- [x] Record the reviewed first-host draft-template reference in
+  `docs/architecture/agent-draft-templates.md` so loop work and host
+  implementation share one source of truth
+- [ ] Keep explicit `/agent` subcommands deterministic while making natural-
+  language `/agent` routing model-assisted under a bounded action schema
+  instead of unconstrained free-form routing or keyword-only heuristics
+- [ ] Split a dedicated first-host create-flow pipeline out of `/agent add`
+  and bare `/agent <natural language>` intake so only confirmed add/create
+  intents continue into:
+  - task typing
+  - scope clarification
+  - checklist generation
+  - immutable-prompt generation
+  - loop-policy drafting
+- [ ] Make code-task draft generation pull from real repo/todo/source context
+  and refuse generic filler checklists such as “analyze / design / code / test
+  / deploy” when a concrete formal checklist can be derived
+- [ ] Force scope clarification before draft confirmation when a user goal is
+  too broad to yield a trustworthy checklist-backed mission
+- [ ] Require every autonomous cycle to persist authoritative checklist item
+  status updates plus:
+  - overall completion
+  - next step
+  - latest blocker
+  - latest progress summary
+- [ ] Let the AI autonomously detect when the confirmed checklist needs to be
+  refined (split / append / reorder / merge / drop / rename) based on actual
+  execution progress
+- [ ] Keep internal substeps/workpad refinement distinct from formal checklist
+  mutation so the agent can self-organize without silently rewriting
+  user-confirmed scope
+- [ ] Promote these checklist-stewardship rules into the first-host prompt
+  contract and immutable code-task prompt scaffolding so every cycle judges and
+  updates TODO state explicitly
 
 Completion criteria:
 
@@ -1045,16 +1104,29 @@ Completion criteria:
   per notification policy, with manual mission queries remaining available
 - [x] A user can run a checklist-backed looping mission from the first host
   surface without external `loop.sh` as the primary UX
+- [ ] Code-task missions use a repo-aware fixed prompt scaffold instead of a
+  generic lifecycle prompt before the first autonomous cycle begins
+- [ ] The first host keeps explicit `/agent` commands deterministic while using
+  a bounded model-assisted router for natural-language intake, with a
+  dedicated create-flow pipeline for add/create intents
+- [ ] Broad or underspecified user goals trigger clarification before a formal
+  mission checklist is confirmed
+- [ ] Each autonomous cycle persists authoritative checklist/progress updates
+  that the first host can render directly without inferring TODO state from raw
+  text
+- [ ] Checklist refinement suggestions are autonomous but formal checklist
+  mutations still flow through explicit package-owned change/approval semantics
 
 Phase 9 closeout note:
 
-- `Phase 7` / `Phase 8` / `Phase 9` now form the validated pre-`Phase 10`
-  baseline for checklist-first runtime hardening, host-neutral package
-  contracts, and first-host product UX
-- unless a regression or architecture mismatch is discovered, normal Mission
-  Control loop work should not reopen those completed phases
-- the next unfinished execution phase is `Phase 10` service exposure; later
-  providers/sources remain explicitly deferred
+- `Phase 7` / `Phase 8` / `Phase 9a-u` form the validated runtime baseline for
+  checklist-first hardening, host-neutral package contracts, and first-host
+  product UX
+- `Phase 9v` is now the next reopened execution scope because the first-host
+  draft/prompt quality and autonomous checklist stewardship still need explicit
+  product hardening before service exposure
+- `Phase 10` service exposure remains blocked until those `Phase 9v` items are
+  complete; later providers/sources remain explicitly deferred
 
 ## Phase 10: Service Exposure and Additional Hosts
 
@@ -1119,3 +1191,11 @@ Mission Control is ready for broader extraction when:
   fallback
 - [x] the first host can drive a checklist-backed looping mission as product
   UX without depending on external `loop.sh`
+- [ ] the first host drafts code missions from repo-aware prompt/checklist
+  templates rather than generic lifecycle plans
+- [ ] the first host requires clarification when the requested mission scope is
+  too broad to produce a trustworthy confirmed checklist
+- [ ] each autonomous cycle updates authoritative checklist/TODO status and
+  progress fields that hosts can render directly
+- [ ] autonomous checklist refinement can propose concrete changes without
+  bypassing formal package-owned approval/change gates

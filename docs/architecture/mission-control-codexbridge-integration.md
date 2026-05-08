@@ -476,12 +476,59 @@ Important clarification:
 
 ## Practical Next Step
 
-The useful next step is no longer more Phase 9 bridge convergence work. Keep
-the current package/host split stable, and only reopen Mission Control work
-for one of these explicit re-entry scopes:
+The useful next step is a narrow `Phase 9v` reopen before service exposure:
 
-1. `Phase 10` service exposure on top of the existing package-owned
-   `commands / queries / streams` contract.
-2. Later work-item sources such as GitHub/Linear once they are back in scope.
-3. Later providers that can honor the same durable runtime contract without
-   pulling runtime ownership back into CodexBridge.
+1. harden the first-host `/agent` draft experience so code missions produce
+   repo-aware prompt/checklist drafts instead of generic lifecycle plans
+2. keep explicit `/agent` subcommands deterministic while moving natural-
+   language intake to a bounded model-assisted router plus a dedicated
+   create-flow pipeline
+3. make autonomous checklist stewardship explicit so each cycle updates TODO
+   status/progress and can propose safe checklist refinements through formal
+   package-owned change flows
+4. only after that reopen closes, move to `Phase 10` service exposure on top
+   of the existing package-owned `commands / queries / streams` contract
+5. keep later work-item sources such as GitHub/Linear and later providers
+   deferred until they are explicitly back in scope
+
+## Reference: Bounded Model-Assisted `/agent` Routing
+
+This is a recommended first-host reference shape, not a package-level mandate.
+It exists so future prompt work and host UX changes converge on one predictable
+intake model instead of reintroducing unconstrained command-skill routing.
+
+Suggested routing layers:
+
+1. Deterministic subcommand precedence:
+   - explicit `/agent confirm|edit|cancel|list|show|result|stop|retry|delete|rename|send`
+     should stay program-routed first
+   - these commands should not depend on model intent classification
+2. Bounded model-assisted natural-language intake:
+   - bare `/agent <natural language>` and `/agent add <natural language>` may
+     use a model/skill router
+   - the router should emit a small action schema such as:
+     - `create_draft`
+     - `update_pending_draft`
+     - `clarify`
+     - `query_jobs`
+     - `show_job`
+     - `show_result`
+     - `propose_stop`
+     - `propose_retry`
+     - `reject`
+   - low-confidence classification should prefer clarification over forced
+     intent selection
+3. Dedicated create-flow pipeline:
+   - only actions resolved to add/create should continue into:
+     - task typing
+     - scope narrowing
+     - checklist drafting
+     - immutable-prompt drafting
+     - loop-policy drafting
+   - create-flow should not be reused for edit/confirm/query/stop paths
+4. Deterministic execution shell:
+   - once the bounded router chooses an action, the resulting mutation/query
+     must run through deterministic bridge handlers plus package-owned mission
+     commands/queries
+   - the model proposes structure and semantics; it does not mutate
+     authoritative mission state directly

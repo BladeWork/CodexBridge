@@ -11,23 +11,156 @@ The tracked document is the reviewable source of truth.
 The git-ignored mirror exists so local loop tooling can execute the same prompt
 without forcing `.codexbridge/` runtime assets into version control.
 
-This prompt is intentionally scoped to the validated pre-`Phase 10` baseline:
+This prompt is intentionally scoped to the reopened pre-`Phase 10` baseline:
 
-- phases `0-9` are complete and validated through `Phase 9u`
-- `Phase 10` service exposure is now the next unfinished execution phase
+- phases `0-9u` remain validated
+- `Phase 9v` is now the next unfinished execution phase
+- `Phase 10` service exposure stays deferred until `Phase 9v` closes
 - later providers/sources remain deferred
 - `/auto` is out of scope
 - `CodexBridge` integration cleanup around `/agent` remains an explicit part of
-  the completed baseline, not a hidden side effect
+  the reopened baseline, not a hidden side effect
 
 Current re-entry rules:
 
-- do not reuse the embedded `Phase 7` / `Phase 8` / `Phase 9` prompt for normal
-  Mission Control loop work
-- only reopen that prompt when a concrete regression requires re-validating the
-  pre-`Phase 10` baseline
-- for new Mission Control work, start from `Phase 10` service exposure or from
-  another explicitly reopened later scope
+- use the embedded `Phase 9v` reopen scope for normal Mission Control loop work
+- do not jump to `Phase 10` service exposure until `Phase 9v` closes
+- later providers/sources still require an explicit scope reopen
+
+## Current Reopened `Phase 9v` Prompt
+
+```md
+# Mission Control Loop Prompt
+
+请继续推进 `@codexbridge/mission-control` 的工作。
+
+不可变目标：
+CodexBridge 的目标是通过微信稳定暴露 Codex 原生能力，并在桥接层扩展微信命令和个人助理工作流；`@codexbridge/mission-control` 的目标是做成一个通用的、面向 agent 的长期任务运行时，使一个目标能够持续执行直到完成、明确失败或需要人工介入。当前以 Codex 作为第一真实 provider，以 CodexBridge 作为第一 host / control surface；`openai-agents-js` 是后续 provider 方向，不是当前主线。
+
+优先工作分支：
+- `track/mission-control`
+
+当前循环范围：
+1. 继续推进 `docs/todo/mission-control.md` 中尚未完成的核心任务。
+2. 当前重新打开 `Phase 9v`，在进入 `Phase 10` 之前先收口以下高优先级缺口：
+   - `/agent` 显式子命令优先的固定路由 + 自然语言 intake 的受约束大模型路由
+   - 仅针对 add/create 意图的专用 create-flow pipeline
+   - 代码任务的 repo-aware 固定 prompt 模板
+   - 非代码任务的通用模板
+   - 过宽目标的澄清/收窄机制
+   - 每轮循环后的 authoritative checklist/TODO 状态更新
+   - AI 对 checklist 细化/修改建议的自主判断
+   - workpad 内部子步骤与正式 checklist 变更的边界
+3. `Phase 10` service exposure 只有在这些 `Phase 9v` 项完成后才进入。
+4. 暂不扩展：
+   - 真实 GitHub / Linear source 接入
+   - `OpenAIAgentsMissionProvider`
+   - 可选 Web host / dashboard
+   - 纯服务暴露包装之外的 later providers / sources
+5. 当前 loop 不只是补 package core，也要继续收敛 `CodexBridge` 作为第一 host 的集成边界。
+6. 代码/通用 draft 模板、bounded routing 规则、状态驱动循环要求，以
+   `docs/architecture/agent-draft-templates.md` 为审查基线。
+7. 若需实现或收紧 `/agent` draft 路由/模板，请同时参考：
+   - `skills/agent-draft-router/SKILL.md`
+
+先阅读并遵守：
+- `docs/architecture/agent-draft-templates.md`
+- `skills/agent-draft-router/SKILL.md`
+- `docs/architecture/codexbridge-core-architecture.md`
+- `docs/architecture/mission-control.md`
+- `docs/architecture/mission-control-codexbridge-integration.md`
+- `docs/architecture/mission-control-loop-prompt.md`
+- `docs/todo/roadmap.md`
+- `docs/todo/mission-control.md`
+
+开始前必须做：
+1. 检查 `git status`，保护已有未提交改动，不要覆盖用户改动。
+2. 对比代码、测试、文档和 checklist，判断当前 Mission Control phase 是否准确。
+3. 先以 `mission-control.md` 和 `mission-control-codexbridge-integration.md` 锁定目标边界，再决定下一步改动。
+4. 如果文档和代码不一致，以代码、测试和 git 状态为准，先修正文档或提出最小修正方案。
+5. 如果为了达成不可变目标必须新增需求项，优先补充到 `docs/todo/mission-control.md`；只有真正跨工作流的事项才改 `docs/todo/roadmap.md`。
+6. 默认推进到“可验证的最小完整阶段”，不要只停留在分析。
+7. 不要重复做已完成阶段；根据当前代码、测试和 checklist 自动选择下一个未完成阶段。
+
+当前集成重点：
+1. `/agent` 仍然是 Mission v0 host surface；不要引入新的 `/mission` 命令来绕过集成收口。
+2. `/agent` 显式子命令必须保持程序优先的固定路由；裸自然语言与 `/agent add` 可以使用大模型/skill，但只能在受约束的 action schema 下做意图判断。
+3. 只有当路由结果明确落到 add/create 时，后续才允许进入任务类型判断、scope 澄清、checklist 草案、immutable prompt 草案、loop policy 草案的 create-flow。
+4. 代码任务草案必须优先产出 repo-aware checklist 和固定 prompt scaffold，不能退回通用“分析/设计/开发/测试/部署”模板。
+5. 非代码任务可以使用较轻的通用模板，但仍必须给出正式 checklist、immutable prompt、loop policy。
+6. 每轮循环都必须显式判断并更新：
+   - 当前 checklist item 状态
+   - overall completion
+   - next step
+   - latest blocker
+   - latest progress summary
+7. 如果 AI 判断 checklist 本身需要细化或调整，必须：
+   - 先区分内部 substeps 和正式 checklist 变更
+   - 对正式 checklist 变更产出显式建议 / `PlanChangeRequest`
+   - 不得静默改写用户已确认的正式 checklist
+
+当前工作策略：
+1. 优先修改：
+   - `packages/mission-control/**`
+   - `src/core/bridge_coordinator.ts`
+   - `src/core/agent_job_service.ts`
+   - `src/core/mission_control_agent_job_adapter.ts`
+   - `docs/command-skills/agent.md`
+   - `docs/architecture/agent-draft-templates.md`
+   - `skills/agent-draft-router/SKILL.md`
+   - `docs/architecture/mission-control.md`
+   - `docs/architecture/mission-control-codexbridge-integration.md`
+   - `docs/architecture/mission-control-loop-prompt.md`
+   - `docs/todo/mission-control.md`
+2. 除非改动确实跨切面，否则尽量少动：
+   - `docs/todo/roadmap.md`
+   - `README.md`
+   - root `package.json`
+3. 当前优先级始终是：
+   - bounded model-assisted `/agent` natural-language routing
+   - dedicated add/create-flow intake pipeline
+   - first-host task-type-aware draft templates
+   - code-task repo-aware immutable prompt scaffolding
+   - broad-scope clarification before confirmation
+   - authoritative checklist/TODO status updates after every cycle
+   - autonomous checklist refinement suggestions with explicit change gates
+   - workpad substeps vs formal checklist mutation boundary
+
+自动循环约束：
+1. 每一轮只做一个“可验证的最小完整阶段”或一个清晰的子阶段。
+2. 完成后必须更新 `docs/todo/mission-control.md`。
+3. 如果本轮完成了一个可验证的最小完整阶段并且验证通过，必须在当前分支自动提交，但不要 push。
+4. 如果本轮本应提交但无法安全提交，必须停止并进入 `NEEDS_HUMAN`，不要带着未提交改动继续下一轮。
+5. 如果遇到产品边界不清、需要新增不可逆行为、需要人工决策、或连续失败超预算，停止并进入 `NEEDS_HUMAN`。
+6. 只有当 `docs/todo/mission-control.md` 当前循环范围内的 checklist 全部完成，并且上述 `Phase 9v` 任务已完成时，才可进入 `DONE`。
+
+验证要求：
+1. 能跑验证就跑验证。
+2. 不能跑要明确说明阻塞点。
+3. 每完成一个阶段必须给出可验证结果：`typecheck` / `tests` / `build`，或说明为什么暂时不能跑。
+
+最终输出协议：
+1. 正常回复后，最后必须单独输出一行：
+   - `LOOP_STATUS: CONTINUE`
+   - 或 `LOOP_STATUS: DONE`
+   - 或 `LOOP_STATUS: NEEDS_HUMAN`
+   - 或 `LOOP_STATUS: FAILED`
+2. 紧接着再单独输出一行：
+   - `LOOP_REASON: <一句话原因>`
+3. 紧接着再单独输出这些机器可读字段：
+   - `LOOP_PHASE: <当前完成的 phase 或子阶段>`
+   - `LOOP_PROGRESS: <当前做到哪一步的简短摘要>`
+   - `LOOP_NEXT: <下一步最合理的推进项>`
+   - `LOOP_OVERALL_PROGRESS: <0-100% 或 x/y 的整体完成进度估算>`
+   - `LOOP_COMMIT: <本轮产生的 commit hash；如果没有则写 none>`
+4. 如果 `LOOP_STATUS: CONTINUE`，则 `LOOP_COMMIT` 不能是 `none`。
+5. 在 `LOOP_STATUS` 之前，正常说明：
+   - 本次完成了哪个 phase 或最小阶段
+   - 修改了哪些代码、文档、checklist
+   - 是否发现新增需求项或边界调整
+   - 跑了哪些验证
+   - 下一步最合理的推进项是什么
+```
 
 ## Historical Pre-`Phase 10` Prompt
 

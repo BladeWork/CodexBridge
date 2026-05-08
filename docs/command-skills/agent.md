@@ -16,6 +16,11 @@ Bridge invokes this skill only for semantic forms:
 2. `/agent add <natural language>`
 3. `/agent edit <natural language>`
 
+For task-type-specific draft shaping, especially `code` missions, also follow:
+
+- `docs/architecture/agent-draft-templates.md`
+- `skills/agent-draft-router/SKILL.md`
+
 Bridge sends a prompt with this payload shape:
 
 ```json
@@ -249,8 +254,13 @@ Checklist rules:
 - Include a verification step for code, data changes, artifacts, operations, and publishing.
 - `plan` is the user-confirmed TODO/checklist, not a generic software lifecycle template.
 - Avoid filler such as "analyze / design / code / test / deploy" unless those are truly the correct checklist items for this exact mission.
+- For `category: "code"`, prefer repo-aware checklist items plus a fixed
+  immutable prompt scaffold; do not fall back to generic lifecycle wording
+  when concrete repo/task boundaries can be derived.
 - `acceptanceCriteria` should describe how Mission Control knows the task is done.
 - `immutablePrompt` should be reusable for every loop cycle of the mission.
+- For `category: "code"`, include bilingual Conventional Commit requirements
+  inside `immutablePrompt` whenever the mission allows repository changes.
 - For "只做方案", "不要改代码", "先分析", or similar, make the execution boundary explicit in `goal`, `expectedOutput`, and `plan`.
 - Do not include `/agent confirm`, `/agent edit`, `/agent cancel`, or other command hints inside draft fields.
 - Return the complete updated draft for `update_pending_draft`, not a patch.
