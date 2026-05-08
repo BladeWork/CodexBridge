@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { InMemoryMissionRepository } from '../../packages/mission-control/src/index.js';
+import type { MissionHostNotification } from '../../packages/mission-control/src/index.js';
 import { AgentJobService } from '../../src/core/agent_job_service.js';
 import { runAgentJobWithMissionControl } from '../../src/core/mission_control_agent_job_runner.js';
 import { InMemoryAgentJobRepository } from '../../src/store/in_memory/in_memory_agent_job_repository.js';
@@ -165,7 +166,7 @@ test('runAgentJobWithMissionControl forwards package-backed loop notifications t
     maxAttempts: 3,
   });
 
-  const notifications: Array<Record<string, unknown>> = [];
+  const notifications: MissionHostNotification[] = [];
   let verifierCallCount = 0;
   let turnCount = 0;
 
@@ -222,7 +223,7 @@ test('runAgentJobWithMissionControl forwards package-backed loop notifications t
       return nowRef.value;
     },
     onNotification: async (notification) => {
-      notifications.push(notification as unknown as Record<string, unknown>);
+      notifications.push(notification);
     },
   });
 

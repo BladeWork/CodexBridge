@@ -20,6 +20,7 @@ function createWorkflow(): LoadedMissionWorkflow {
       path: '/repo/.codexbridge/mission/WORKFLOW.md',
       label: 'built-in defaults',
     },
+    hash: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
     policy: {
       version: 1,
       maxTurns: 6,
@@ -80,6 +81,9 @@ function createVerifyingMissionAndAttempt() {
     status: 'verifying',
     providerRunId: 'run-verifier-1',
     providerThreadId: 'thread-verifier-1',
+    workflowPath: null,
+    workflowHash: null,
+    resolverReason: null,
     promptDigest: 'digest-verifier-1',
     verifierVerdict: null,
     verifierSummary: null,

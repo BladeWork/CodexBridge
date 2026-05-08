@@ -17,6 +17,7 @@ import {
 } from '../src/index.js';
 import type {
   MissionHostAdapter,
+  MissionHostNotification,
   MissionAttempt,
   MissionProvider,
   MissionProviderResult,
@@ -273,7 +274,7 @@ continuation: allow
 `);
   const repo = new JsonFileMissionRepository(stateDir);
   const nowRef = { value: 1_700_810_000_000 };
-  const notifications: Array<Record<string, unknown>> = [];
+  const notifications: MissionHostNotification[] = [];
 
   const waitResults = new Map<string, MissionProviderResult>([
     ['run-notify-1', {
@@ -378,7 +379,7 @@ continuation: allow
     nowRef,
     hostAdapter: createNoopMissionHostAdapter({
       async notify(notification) {
-        notifications.push(structuredClone(notification) as unknown as Record<string, unknown>);
+        notifications.push(structuredClone(notification) as MissionHostNotification);
       },
     }),
     ids: [
@@ -786,6 +787,9 @@ test('mission runtime stopMission interrupts the active provider run and marks t
     status: 'running',
     providerRunId: 'run-stop-1',
     providerThreadId: 'thread-stop-1',
+    workflowPath: runningMission.workflowPath,
+    workflowHash: runningMission.workflowHash,
+    resolverReason: runningMission.workflowResolverReason,
     promptDigest: 'digest-stop-1',
     verifierVerdict: null,
     verifierSummary: null,
@@ -882,6 +886,9 @@ continuation: allow
     status: 'running',
     providerRunId: null,
     providerThreadId: null,
+    workflowPath: runningMission.workflowPath,
+    workflowHash: runningMission.workflowHash,
+    resolverReason: runningMission.workflowResolverReason,
     promptDigest: null,
     verifierVerdict: null,
     verifierSummary: null,

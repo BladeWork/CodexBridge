@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import type { MissionHostNotification } from '../../packages/mission-control/src/index.js';
 import { CodexBridgeMissionHostAdapter } from '../../src/core/mission_control_host_adapter.js';
 import type { AgentJob, BridgeSession } from '../../src/types/core.js';
 
@@ -67,7 +68,7 @@ test('CodexBridgeMissionHostAdapter forwards context, binding, progress, and app
   }> = [];
   const progress: Array<Record<string, unknown>> = [];
   const approvals: Array<Record<string, unknown>> = [];
-  const notifications: Array<Record<string, unknown>> = [];
+  const notifications: MissionHostNotification[] = [];
 
   const adapter = new CodexBridgeMissionHostAdapter({
     jobId: job.id,
@@ -83,7 +84,7 @@ test('CodexBridgeMissionHostAdapter forwards context, binding, progress, and app
       approvals.push(request as unknown as Record<string, unknown>);
     },
     onNotification: async (notification) => {
-      notifications.push(notification as unknown as Record<string, unknown>);
+      notifications.push(notification);
     },
   });
 
