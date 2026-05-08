@@ -307,6 +307,17 @@ Current convergence status:
     snapshot stay package-owned, so CodexBridge `/agent show` can surface that
     budget stop through existing package detail views without reviving
     bridge-local retry heuristics
+- Phase 9v.a now hardens the first-host `/agent` intake path before service
+  exposure:
+  - explicit `/agent` subcommands remain deterministic and local, while bare
+    `/agent <text>` and `/agent add <text>` use bounded model-assisted routing
+    only to choose an allowed action
+  - add/create actions now enter a dedicated host-owned create-flow that can
+    clarify broad scope, task-type the mission, and rebuild the draft from
+    repo-aware context instead of trusting a generic model-authored lifecycle
+    plan verbatim
+  - first-host code drafts now surface repo-aware prompt/checklist scaffolding
+    plus explicit checklist-stewardship rules before the first autonomous cycle
 - broader issue/board sources, service exposure, and later providers remain
   explicitly deferred; they should not reopen bridge-owned runtime truth or
   weaken the current package/host adapter split when work resumes

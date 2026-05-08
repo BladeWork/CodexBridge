@@ -956,6 +956,25 @@ checklist stewardship before service exposure:
   append / reorder opportunities while still routing formal checklist changes
   through package-owned `PlanChangeRequest` or another explicit policy gate
 
+Phase 9v.a now lands the first host-owned `/agent` create-flow intake
+hardening on top of that baseline:
+
+- explicit `/agent` subcommands stay deterministic and out of model routing,
+  while bare `/agent <text>` and `/agent add <text>` use the bounded command
+  skill only to choose an allowed action
+- create/add actions now pass through a dedicated host-owned create-flow that
+  can task-type the mission, reject broad scope with clarification, and
+  synthesize the first formal draft from repo-aware context instead of trusting
+  a model-authored free-form lifecycle plan
+- `code` missions now render a higher-constraint repo-aware scaffold with
+  branch, must-read docs, preflight checks, execution boundaries, allowed
+  paths, discouraged paths, validation commands, and immutable prompt rules for
+  checklist stewardship
+- the first-host immutable prompt scaffold now explicitly requires each cycle to
+  judge/update checklist item status, overall completion, next step, latest
+  blocker, and latest progress summary while preserving the boundary between
+  workpad substeps and formal checklist mutation
+
 - [x] Add `WorkItemSourceAdapter` as the source abstraction
 - [x] Support manual host-created source-backed work items through the
   package-owned create command
@@ -1042,16 +1061,16 @@ checklist stewardship before service exposure:
   state
 - [x] Reduce long-lived reliance on external `loop.sh` to an operational
   fallback once package supervision exists
-- [ ] Add first-host task-type-aware mission draft templates, starting with a
+- [x] Add first-host task-type-aware mission draft templates, starting with a
   high-constraint `code` template and a lighter generic template for non-code
   missions
 - [x] Record the reviewed first-host draft-template reference in
   `docs/architecture/agent-draft-templates.md` so loop work and host
   implementation share one source of truth
-- [ ] Keep explicit `/agent` subcommands deterministic while making natural-
+- [x] Keep explicit `/agent` subcommands deterministic while making natural-
   language `/agent` routing model-assisted under a bounded action schema
   instead of unconstrained free-form routing or keyword-only heuristics
-- [ ] Split a dedicated first-host create-flow pipeline out of `/agent add`
+- [x] Split a dedicated first-host create-flow pipeline out of `/agent add`
   and bare `/agent <natural language>` intake so only confirmed add/create
   intents continue into:
   - task typing
@@ -1059,10 +1078,10 @@ checklist stewardship before service exposure:
   - checklist generation
   - immutable-prompt generation
   - loop-policy drafting
-- [ ] Make code-task draft generation pull from real repo/todo/source context
+- [x] Make code-task draft generation pull from real repo/todo/source context
   and refuse generic filler checklists such as “analyze / design / code / test
   / deploy” when a concrete formal checklist can be derived
-- [ ] Force scope clarification before draft confirmation when a user goal is
+- [x] Force scope clarification before draft confirmation when a user goal is
   too broad to yield a trustworthy checklist-backed mission
 - [ ] Require every autonomous cycle to persist authoritative checklist item
   status updates plus:
@@ -1076,7 +1095,7 @@ checklist stewardship before service exposure:
 - [ ] Keep internal substeps/workpad refinement distinct from formal checklist
   mutation so the agent can self-organize without silently rewriting
   user-confirmed scope
-- [ ] Promote these checklist-stewardship rules into the first-host prompt
+- [x] Promote these checklist-stewardship rules into the first-host prompt
   contract and immutable code-task prompt scaffolding so every cycle judges and
   updates TODO state explicitly
 
@@ -1104,12 +1123,12 @@ Completion criteria:
   per notification policy, with manual mission queries remaining available
 - [x] A user can run a checklist-backed looping mission from the first host
   surface without external `loop.sh` as the primary UX
-- [ ] Code-task missions use a repo-aware fixed prompt scaffold instead of a
+- [x] Code-task missions use a repo-aware fixed prompt scaffold instead of a
   generic lifecycle prompt before the first autonomous cycle begins
-- [ ] The first host keeps explicit `/agent` commands deterministic while using
+- [x] The first host keeps explicit `/agent` commands deterministic while using
   a bounded model-assisted router for natural-language intake, with a
   dedicated create-flow pipeline for add/create intents
-- [ ] Broad or underspecified user goals trigger clarification before a formal
+- [x] Broad or underspecified user goals trigger clarification before a formal
   mission checklist is confirmed
 - [ ] Each autonomous cycle persists authoritative checklist/progress updates
   that the first host can render directly without inferring TODO state from raw
