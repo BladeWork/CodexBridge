@@ -1046,6 +1046,16 @@ Completion criteria:
 - [x] A user can run a checklist-backed looping mission from the first host
   surface without external `loop.sh` as the primary UX
 
+Phase 9 closeout note:
+
+- `Phase 7` / `Phase 8` / `Phase 9` now form the validated pre-`Phase 10`
+  baseline for checklist-first runtime hardening, host-neutral package
+  contracts, and first-host product UX
+- unless a regression or architecture mismatch is discovered, normal Mission
+  Control loop work should not reopen those completed phases
+- the next unfinished execution phase is `Phase 10` service exposure; later
+  providers/sources remain explicitly deferred
+
 ## Phase 10: Service Exposure and Additional Hosts
 
 - [ ] Wrap the same package-owned contract in a later service layer

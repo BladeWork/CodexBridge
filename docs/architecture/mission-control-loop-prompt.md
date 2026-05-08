@@ -11,19 +11,25 @@ The tracked document is the reviewable source of truth.
 The git-ignored mirror exists so local loop tooling can execute the same prompt
 without forcing `.codexbridge/` runtime assets into version control.
 
-This prompt is intentionally scoped to the current Mission Control baseline:
+This prompt is intentionally scoped to the validated pre-`Phase 10` baseline:
 
-- phases `0-9` are the validated baseline
-- `Phase 10` service exposure and later providers/sources remain deferred
+- phases `0-9` are complete and validated through `Phase 9u`
+- `Phase 10` service exposure is now the next unfinished execution phase
+- later providers/sources remain deferred
 - `/auto` is out of scope
 - `CodexBridge` integration cleanup around `/agent` remains an explicit part of
   the completed baseline, not a hidden side effect
 
-The embedded prompt below should now be treated as a re-entry prompt for the
-pre-`Phase 10` convergence work. Do not reuse it unless that earlier scope is
-explicitly reopened.
+Current re-entry rules:
 
-## Canonical Prompt
+- do not reuse the embedded `Phase 7` / `Phase 8` / `Phase 9` prompt for normal
+  Mission Control loop work
+- only reopen that prompt when a concrete regression requires re-validating the
+  pre-`Phase 10` baseline
+- for new Mission Control work, start from `Phase 10` service exposure or from
+  another explicitly reopened later scope
+
+## Historical Pre-`Phase 10` Prompt
 
 ```md
 # Mission Control Loop Prompt
