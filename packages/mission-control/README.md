@@ -36,7 +36,7 @@ It must not own bridge behavior:
 
 Current phase:
 
-- `phase-9t-host-proactive-notifications`: package-owned mission
+- `phase-9u-no-progress-loop-budget`: package-owned mission
   domain/workflow/workspace/provider/verifier/runtime foundations, first-class
   `WorkItem` / `ChecklistSnapshot` / `PlanChangeRequest` /
   `MissionGeneration` lineage, direct in-process `commands / queries / streams`
@@ -77,7 +77,10 @@ Current phase:
   requiring CodexBridge-specific runtime glue. The runtime now also emits
   package-backed host notifications after authoritative cycle updates, and the
   first host can proactively push those retry/continue loop snapshots without
-  falling back to shell-owned progress UX.
+  falling back to shell-owned progress UX. Package-owned loop budget
+  exhaustion now also covers consecutive `maxNoProgressCycles` checks through
+  persisted cycle history, so restart-safe repair loops can halt
+  authoritatively before another autonomous cycle starts.
 
 This package should preserve the Symphony-style separation between:
 

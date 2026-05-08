@@ -1070,7 +1070,8 @@ Required transition rules:
 - `scope_change_pending -> queued`: a plan change is approved or rejected, the
   active checklist snapshot is resolved, and the mission is re-queued
 - `queued/planning/repairing -> max_loops_reached`: loop policy forbids more
-  cycles before the next autonomous cycle starts
+  cycles before the next autonomous cycle starts, whether from
+  `maxCycles` exhaustion or repeated `maxNoProgressCycles` churn
 - `running/verifying/repairing -> stopped`: explicit user stop
 
 Definition of done:
@@ -1976,6 +1977,10 @@ Current implementation note:
   authoritative mission record; runtime and supervision consume that request at
   safe checkpoints instead of treating host-side process interruption as the
   lifecycle source of truth
+- package-owned loop-budget exhaustion now materializes `max_loops_reached`
+  from both absolute cycle limits and consecutive no-progress cycle limits by
+  reading persisted `CycleResult` history before another autonomous cycle
+  starts
 - pristine source-backed missions can now be refreshed through a package-owned
   source-sync command before the first attempt begins, so hosts do not need to
   patch authoritative mission/checklist/work-item records directly just to keep

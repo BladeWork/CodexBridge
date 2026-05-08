@@ -678,7 +678,7 @@ approval summaries plus approve/reject/input hints, and `/agent confirm` can
 resolve paused approval/input cases without flattening them into a generic
 resume-only flow.
 
-Phase 9t is the current validated baseline, but several behaviors above are
+Phase 9u is the current validated baseline, but several behaviors above are
 still transitional:
 
 - `AgentJob` still carries bridge-side compatibility state that should keep
@@ -696,10 +696,9 @@ still transitional:
   approval-reply control port
 - the formal Mission Control spec now expects explicit
   `scope_change_pending` semantics plus package-owned approval / plan-change
-  control surfaces, and `max_loops_reached` still needs broader convergence
-  beyond the newly landed `loopPolicy.maxCycles` path (for example
-  `maxNoProgressCycles`), so the concrete package boundary has not fully
-  converged on that formal contract yet
+  control surfaces, and provider-neutral live approval replies still remain a
+  later package concern even though the first-host paused-state resolution flow
+  is now package-backed
 
 ## Phase 7: Checklist-First Domain Hardening
 
@@ -920,6 +919,21 @@ notifications on top of those same mission snapshots:
   final reply path, so users gain loop progress visibility without duplicate
   completion/pause messages
 
+Phase 9u landed: package-owned loop-budget exhaustion now also covers
+`loopPolicy.maxNoProgressCycles`:
+
+- Mission Control runtime now counts persisted verifier-driven `CycleResult`
+  history within the active generation and materializes `max_loops_reached`
+  before another autonomous cycle starts when checklist progress has not moved
+  across the configured consecutive no-progress budget
+- authoritative `mission.max_loops_reached` timeline events, checkpoints, and
+  loop snapshots now preserve whether exhaustion came from `maxCycles` or
+  `maxNoProgressCycles`, so recovery and host queries no longer need to infer
+  that budget stop from repeated repair history
+- restart-safe repair loops therefore halt through the package runtime itself
+  instead of relying on bridge-local heuristics or an external supervisor to
+  notice repeated non-progress churn
+
 - [x] Add `WorkItemSourceAdapter` as the source abstraction
 - [x] Support manual host-created source-backed work items through the
   package-owned create command
@@ -947,6 +961,9 @@ notifications on top of those same mission snapshots:
   explicit:
   - `max_loops_reached` when `loopPolicy.maxCycles` is exhausted before the
     next autonomous cycle starts
+- [x] Extend package-owned `max_loops_reached` materialization to
+  `loopPolicy.maxNoProgressCycles` using persisted cycle history inside the
+  active mission generation
 - [x] Add package-owned command coverage for:
   - `startMission`
 - [x] Add package-owned command coverage for:
@@ -1017,6 +1034,9 @@ Completion criteria:
 - [x] External shell supervision is optional, not structurally required
 - [x] The concrete package commands/status model converges with the formal spec
   for confirmation, paused-state, and loop-budget lifecycle control
+- [x] Loop-budget exhaustion now covers both absolute cycle count and
+  restart-safe consecutive no-progress cycle exhaustion before another
+  autonomous cycle starts
 - [x] A first host can require explicit `immutablePrompt` plus initial
   checklist confirmation before the first autonomous cycle starts
 - [x] A first host can inspect package-owned cycle/stage/completion snapshots

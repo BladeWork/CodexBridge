@@ -1477,16 +1477,9 @@ export class MissionRuntime {
   }
 
   private async materializeMaxLoopsReached(mission: Mission): Promise<Mission | null> {
-    const maxCycles = mission.loopPolicy.maxCycles;
-    if (
-      maxCycles === null
-      || mission.attemptCount < maxCycles
-      || (mission.status !== 'queued' && mission.status !== 'planning' && mission.status !== 'repairing')
-    ) {
+    if (mission.status !== 'queued' && mission.status !== 'planning' && mission.status !== 'repairing') {
       return null;
     }
-    const at = this.now();
-    const summary = `Mission loop budget exhausted: max cycles reached (${mission.attemptCount}/${maxCycles}).`;
     const latestAttempt = mission.activeAttemptId
       ? this.repository.getAttemptById(mission.activeAttemptId)
       : this.repository
@@ -1502,14 +1495,56 @@ export class MissionRuntime {
           }
           return right.updatedAt - left.updatedAt;
         })[0] ?? null;
+    const maxCycles = mission.loopPolicy.maxCycles;
+    if (maxCycles !== null && mission.attemptCount >= maxCycles) {
+      return this.materializeLoopBudgetExhausted(mission, latestAttempt, {
+        stage: 'runtime.max_cycles',
+        summary: `Mission loop budget exhausted: max cycles reached (${mission.attemptCount}/${maxCycles}).`,
+        evidence: {
+          maxCycles,
+          attemptCount: mission.attemptCount,
+        },
+      });
+    }
+
+    const maxNoProgressCycles = mission.loopPolicy.maxNoProgressCycles;
+    const noProgressCycles = maxNoProgressCycles === null
+      ? 0
+      : countConsecutiveNoProgressCycles(
+        listMissionCycleResults(this.listActiveGenerationEvents(mission)),
+      );
+    if (maxNoProgressCycles !== null && noProgressCycles >= maxNoProgressCycles) {
+      return this.materializeLoopBudgetExhausted(mission, latestAttempt, {
+        stage: 'runtime.max_no_progress_cycles',
+        summary: `Mission loop budget exhausted: max no-progress cycles reached (${noProgressCycles}/${maxNoProgressCycles}).`,
+        evidence: {
+          maxNoProgressCycles,
+          noProgressCycles,
+        },
+      });
+    }
+
+    return null;
+  }
+
+  private async materializeLoopBudgetExhausted(
+    mission: Mission,
+    latestAttempt: MissionAttempt | null,
+    input: {
+      stage: string;
+      summary: string;
+      evidence: Record<string, unknown>;
+    },
+  ): Promise<Mission> {
+    const at = this.now();
     const halted = transitionMission(mission, 'max_loops_reached', {
       at,
-      reason: summary,
-      lastError: summary,
+      reason: input.summary,
+      lastError: input.summary,
       workpad: {
         ...mission.workpad,
-        latestBlocker: summary,
-        latestVerifierSummary: summary,
+        latestBlocker: input.summary,
+        latestVerifierSummary: input.summary,
         updatedAt: at,
       },
     });
@@ -1518,27 +1553,26 @@ export class MissionRuntime {
       mission: savedMission,
       attempt: latestAttempt,
       status: 'failed',
-      stage: 'runtime.max_cycles',
-      progress: summary,
+      stage: input.stage,
+      progress: input.summary,
       nextStep: 'Retry the mission to open a new generation with a fresh cycle budget.',
-      verifierSummary: summary,
-      blocker: summary,
-      evidence: {
-        maxCycles,
-        attemptCount: mission.attemptCount,
-      },
+      verifierSummary: input.summary,
+      blocker: input.summary,
+      evidence: input.evidence,
     });
-    this.appendMissionEvent(savedMission, 'mission.max_loops_reached', summary, latestAttempt, {
-      maxCycles,
-      attemptCount: mission.attemptCount,
+    this.appendMissionEvent(savedMission, 'mission.max_loops_reached', input.summary, latestAttempt, {
+      ...input.evidence,
       cycleResult,
     });
-    this.saveCheckpointRecord(savedMission, latestAttempt, 'runtime.max_cycles', summary, {
-      maxCycles,
-      attemptCount: mission.attemptCount,
-    });
+    this.saveCheckpointRecord(savedMission, latestAttempt, input.stage, input.summary, input.evidence);
     await this.emitHostNotification(savedMission, latestAttempt, cycleResult);
     return savedMission;
+  }
+
+  private listActiveGenerationEvents(mission: Mission): MissionEvent[] {
+    return this.repository
+      .listEvents(mission.id)
+      .filter((event) => event.generationId === mission.activeGenerationId || event.generationId === null);
   }
 
   private saveMission(mission: Mission): Mission {
@@ -1966,6 +2000,65 @@ function computeArtifactBytes(artifacts: readonly MissionProviderArtifact[]): nu
     }
   }
   return total;
+}
+
+function countConsecutiveNoProgressCycles(
+  cycleResults: readonly MissionCycleResult[],
+): number {
+  let streak = 0;
+  for (let index = cycleResults.length - 1; index >= 0; index -= 1) {
+    const current = cycleResults[index];
+    if (!current || (current.status !== 'retry' && current.status !== 'continue')) {
+      break;
+    }
+    const previous = index > 0 ? cycleResults[index - 1] ?? null : null;
+    if (didMissionCycleAdvanceProgress(previous, current)) {
+      break;
+    }
+    streak += 1;
+  }
+  return streak;
+}
+
+function didMissionCycleAdvanceProgress(
+  previous: MissionCycleResult | null,
+  current: MissionCycleResult,
+): boolean {
+  const currentOverallCompletion = typeof current.overallCompletion === 'number'
+    ? current.overallCompletion
+    : 0;
+  const previousOverallCompletion = typeof previous?.overallCompletion === 'number'
+    ? previous.overallCompletion
+    : 0;
+  if (currentOverallCompletion > previousOverallCompletion) {
+    return true;
+  }
+  const completedItemIdValue = asRecord(current.evidence)?.completedItemId;
+  const completedItemId = typeof completedItemIdValue === 'string'
+    ? normalizeText(completedItemIdValue)
+    : null;
+  if (completedItemId) {
+    return true;
+  }
+  const currentMissingCount = getMissingAcceptanceCriteriaCount(current);
+  const previousMissingCount = previous ? getMissingAcceptanceCriteriaCount(previous) : null;
+  return currentMissingCount !== null
+    && previousMissingCount !== null
+    && currentMissingCount < previousMissingCount;
+}
+
+function getMissingAcceptanceCriteriaCount(result: MissionCycleResult): number | null {
+  const evidence = asRecord(result.evidence);
+  if (!evidence || !Array.isArray(evidence.missingAcceptanceCriteria)) {
+    return null;
+  }
+  return evidence.missingAcceptanceCriteria.filter((value) => typeof value === 'string').length;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
 }
 
 function normalizeFiniteNumber(value: unknown): number {

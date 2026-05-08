@@ -17,7 +17,7 @@ import {
 import type { MissionAttempt, MissionEvent } from '../src/index.js';
 
 test('mission control package exposes the current Mission Control phase marker', () => {
-  assert.equal(MISSION_CONTROL_PACKAGE_PHASE, 'phase-9t-host-proactive-notifications');
+  assert.equal(MISSION_CONTROL_PACKAGE_PHASE, 'phase-9u-no-progress-loop-budget');
 });
 
 test('mission state transitions are explicit and reject invalid transitions', () => {

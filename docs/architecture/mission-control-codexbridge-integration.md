@@ -297,6 +297,16 @@ Current convergence status:
     updates proactively while leaving paused/terminal states on the existing
     final-reply path, so users get package-backed loop progress without
     duplicate completion/pause messages
+- Phase 9u now closes the remaining package-owned loop-budget gap around
+  repeated non-progress repair churn:
+  - Mission Control runtime now derives consecutive no-progress counts from
+    persisted generation-local `CycleResult` history and materializes
+    `max_loops_reached` before another autonomous cycle starts when
+    `loopPolicy.maxNoProgressCycles` is exhausted
+  - the resulting `mission.max_loops_reached` event, checkpoint, and loop
+    snapshot stay package-owned, so CodexBridge `/agent show` can surface that
+    budget stop through existing package detail views without reviving
+    bridge-local retry heuristics
 - broader issue/board sources, service exposure, and later providers remain
   explicitly deferred; they should not reopen bridge-owned runtime truth or
   weaken the current package/host adapter split when work resumes

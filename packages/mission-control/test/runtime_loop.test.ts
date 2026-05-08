@@ -1113,3 +1113,129 @@ continuation: allow
   assert.ok(eventKinds.includes('mission.progress'));
   assert.ok(eventKinds.includes('mission.max_loops_reached'));
 });
+
+test('mission runtime materializes max_loops_reached before opening another cycle after repeated no-progress repairs', async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-runtime-max-no-progress-cwd-'));
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-runtime-max-no-progress-state-'));
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-runtime-max-no-progress-root-'));
+  writeWorkflow(cwd, `
+version: 1
+maxTurns: 4
+maxAttempts: 4
+continuation: allow
+`);
+  const repo = new JsonFileMissionRepository(stateDir);
+  const nowRef = { value: 1_700_830_400_000 };
+  const prompts: string[] = [];
+
+  const provider: MissionProvider = {
+    kind: 'fake-provider',
+    async start(input) {
+      prompts.push(input.promptText);
+      return {
+        providerRunId: `run-max-no-progress-${prompts.length}`,
+        providerThreadId: 'thread-max-no-progress',
+      };
+    },
+    async continue() {
+      throw new Error('continue should not be called in max-no-progress test');
+    },
+    async wait(runId) {
+      nowRef.value += 100;
+      return {
+        outcome: 'completed',
+        text: `Completed ${runId}.`,
+        artifacts: [],
+        previewText: `Completed ${runId}.`,
+        errorMessage: null,
+        requiresHuman: false,
+        handoffState: null,
+        continuationEligible: true,
+        stopReason: null,
+        rawState: 'complete',
+      };
+    },
+    async interrupt() {},
+  };
+
+  let verifierCalls = 0;
+  const verifier: MissionVerifier = {
+    async verify(input) {
+      verifierCalls += 1;
+      nowRef.value += 20;
+      assert.equal(input.activeChecklistItem?.title, 'Patch exists');
+      return createMissionVerifierResult({
+        verdict: 'repair',
+        summary: `Still missing proof on cycle ${verifierCalls}.`,
+        missingAcceptanceCriteria: ['Patch exists'],
+      });
+    },
+  };
+
+  const mission = transitionMission(createMission({
+    id: 'mission-runtime-max-no-progress',
+    source: 'weixin',
+    platform: 'weixin',
+    externalScopeId: 'mission-runtime-max-no-progress-scope',
+    title: 'Mission runtime max no-progress cycles',
+    goal: 'Stop once the configured no-progress budget is exhausted.',
+    expectedOutput: 'A verified mission result.',
+    acceptanceCriteria: ['Patch exists'],
+    providerProfileId: 'codex-default',
+    cwd,
+    loopPolicy: {
+      maxAttempts: 4,
+      maxTurns: 4,
+      maxCycles: 4,
+      maxNoProgressCycles: 2,
+    },
+    now: nowRef.value,
+  }), 'queued', {
+    at: nowRef.value + 10,
+  });
+  repo.saveMission(mission);
+
+  const runtime = createRuntimeHarness({
+    repository: repo,
+    provider,
+    verifier,
+    rootDir,
+    nowRef,
+    ids: [
+      'attempt-runtime-max-no-progress-1',
+      'event-runtime-max-no-progress-1',
+      'event-runtime-max-no-progress-2',
+      'event-runtime-max-no-progress-3',
+      'event-runtime-max-no-progress-4',
+      'attempt-runtime-max-no-progress-2',
+      'event-runtime-max-no-progress-5',
+      'event-runtime-max-no-progress-6',
+      'event-runtime-max-no-progress-7',
+      'event-runtime-max-no-progress-8',
+      'event-runtime-max-no-progress-9',
+    ],
+  });
+  const result = await runtime.runMission(mission.id, {
+    ownerId: 'worker-runtime-max-no-progress',
+    readOnly: true,
+    allowSharedCwd: true,
+  });
+
+  assert.equal(prompts.length, 2);
+  assert.equal(verifierCalls, 2);
+  assert.equal(result.mission.status, 'max_loops_reached');
+  assert.match(result.mission.statusReason ?? '', /max no-progress cycles reached/i);
+  assert.equal(result.mission.attemptCount, 2);
+  assert.equal(result.latestCycleResult?.stage, 'runtime.max_no_progress_cycles');
+  assert.equal(result.latestCycleResult?.status, 'failed');
+  assert.equal(result.latestCycleResult?.nextStep, 'Retry the mission to open a new generation with a fresh cycle budget.');
+
+  const attempts = repo.listAttempts(mission.id).sort((left, right) => left.index - right.index);
+  assert.equal(attempts.length, 2);
+  assert.equal(attempts[0]?.status, 'repairing');
+  assert.equal(attempts[1]?.status, 'repairing');
+
+  const eventKinds = repo.listEvents(mission.id).map((event) => event.kind);
+  assert.ok(eventKinds.includes('mission.retrying'));
+  assert.ok(eventKinds.includes('mission.max_loops_reached'));
+});
