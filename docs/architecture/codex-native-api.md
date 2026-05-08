@@ -70,6 +70,10 @@ Current internal shape:
 - current internal helper paths in `src/core/bridge_coordinator.ts` should call
   this substrate instead of re-implementing `startThread({ ephemeral: true })`
   + `startTurn()` ad hoc
+- `src/providers/codex/native_api_continuation_registry.ts` owns the first
+  in-process `response_id -> isolated native session` mapping, TTL bookkeeping,
+  and sticky provider/account affinity checks for `previous_response_id`
+  continuations
 - `src/providers/codex/native_api_server.ts` is the first in-process localhost
   shell over that substrate; it resolves provider/runtime context per request
   so reconnect/account-switch changes do not require a server restart
@@ -142,6 +146,9 @@ Important clarification:
 - the underlying native execution primitive may still be an isolated ephemeral
   Codex thread
 - the API should wrap that primitive, not replace it with an unrelated engine
+- `previous_response_id` continuation must stay pinned to the original native
+  provider/account identity; if that affinity breaks, the localhost API should
+  fail loudly instead of silently rehoming the chain
 
 ### Lane C: External fallback lane
 

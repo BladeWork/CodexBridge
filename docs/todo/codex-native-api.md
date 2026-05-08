@@ -197,6 +197,12 @@ Upstream:
     entrypoint that does not require WeChat/Telegram runtime startup; bridge
     runtime may host it later, but the first service shell must be independently
     startable.
+12. The first continuation registry may stay in-process, but it must make TTL /
+    expiry behavior explicit instead of silently collapsing expired chains into
+    a generic retry path.
+13. `previous_response_id` continuation must stay sticky to the original
+    provider profile and active native account; if that affinity breaks, fail
+    fast instead of continuing on a different native identity.
 
 ## Ordered Executable Sequence
 
@@ -323,6 +329,26 @@ Completion target:
 
 - API callers get stateless-looking continuation while the native runtime keeps
   the actual chain alive
+
+Implementation checklist:
+
+- [x] Introduce a module-local continuation registry:
+  - `src/providers/codex/native_api_continuation_registry.ts`
+  - stores `response_id`, `previous_response_id`, isolated `bridgeSession`,
+    native thread/turn ids, provider profile, active account id, model, route
+    kind, and expiry timestamps
+- [x] Support non-streaming `POST /v1/responses` continuation through
+  `previous_response_id`
+  - `src/providers/codex/native_api_server.ts` now reuses
+    `CodexNativeRuntime.continueIsolatedTurn()` instead of creating a new
+    ephemeral thread when the previous response is still live
+- [x] Enforce sticky provider/account affinity for continuation chains
+  - provider-profile mismatch and active-account drift now fail fast instead of
+    silently rehoming the chain onto a different native identity
+- [x] Cover lookup, expiry, continuation success, and account-mismatch behavior
+  with focused tests
+- [ ] Decide whether continuation mappings must survive native-api service
+  restarts in Phase 3, or remain explicitly in-process until Phase 5
 
 ### 4. Internal side-task routing and direct local fallback
 
@@ -489,7 +515,7 @@ Only after:
 - [x] Expose `GET /v1/models`
 - [x] Expose `POST /v1/responses`
 - [ ] Support streaming Responses output
-- [ ] Map Codex-native continuation/thread semantics to `response_id` /
+- [x] Map Codex-native continuation/thread semantics to `response_id` /
   `previous_response_id`
 - [x] Bind localhost only by default
 - [x] Add minimal local auth or shared-secret policy if needed

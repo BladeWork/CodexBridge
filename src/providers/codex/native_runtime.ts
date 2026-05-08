@@ -58,6 +58,16 @@ export interface CodexNativeRuntimeReconnectSummary {
   results: CodexNativeRuntimeReconnectSummaryEntry[];
 }
 
+export interface CodexNativeRuntimeContinuationTurnOptions {
+  providerProfile: ProviderProfile;
+  providerPlugin: ProviderPluginContract;
+  bridgeSession: BridgeSession;
+  model?: string | null;
+  reasoningEffort?: string | null;
+  serviceTier?: string | null;
+  prepareTurn: (session: BridgeSession) => CodexNativeRuntimeTurnPreparation;
+}
+
 export class CodexNativeRuntime {
   private readonly now: () => number;
 
@@ -249,6 +259,60 @@ export class CodexNativeRuntime {
       title,
       metadata,
     });
+    return this.runTurnOnSession({
+      providerProfile,
+      providerPlugin,
+      session,
+      model,
+      reasoningEffort,
+      serviceTier,
+      prepareTurn,
+    });
+  }
+
+  async continueIsolatedTurn({
+    providerProfile,
+    providerPlugin,
+    bridgeSession,
+    model = null,
+    reasoningEffort = null,
+    serviceTier = null,
+    prepareTurn,
+  }: CodexNativeRuntimeContinuationTurnOptions): Promise<CodexNativeRuntimeTurnResult> {
+    this.assertSupportsIsolatedTurns(providerPlugin);
+    const session: BridgeSession = {
+      ...bridgeSession,
+      providerProfileId: providerProfile.id,
+      updatedAt: this.now(),
+    };
+    return this.runTurnOnSession({
+      providerProfile,
+      providerPlugin,
+      session,
+      model,
+      reasoningEffort,
+      serviceTier,
+      prepareTurn,
+    });
+  }
+
+  private async runTurnOnSession({
+    providerProfile,
+    providerPlugin,
+    session,
+    model = null,
+    reasoningEffort = null,
+    serviceTier = null,
+    prepareTurn,
+  }: {
+    providerProfile: ProviderProfile;
+    providerPlugin: ProviderPluginContract;
+    session: BridgeSession;
+    model?: string | null;
+    reasoningEffort?: string | null;
+    serviceTier?: string | null;
+    prepareTurn: (session: BridgeSession) => CodexNativeRuntimeTurnPreparation;
+  }): Promise<CodexNativeRuntimeTurnResult> {
     const request = prepareTurn(session);
     const sessionSettings = this.buildIsolatedSessionSettings(session, {
       model,

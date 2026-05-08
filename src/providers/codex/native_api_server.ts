@@ -4,6 +4,12 @@ import {
   CodexNativeRuntime,
   type CodexNativeRuntimeReadiness,
 } from './native_runtime.js';
+import {
+  InMemoryCodexNativeApiContinuationRegistry,
+  type CodexNativeApiContinuationEntry,
+  type CodexNativeApiContinuationLookupResult,
+  type CodexNativeApiContinuationRegistry,
+} from './native_api_continuation_registry.js';
 import type { ProviderModelInfo, ProviderPluginContract, ProviderProfile } from '../../types/provider.js';
 
 type JsonRecord = Record<string, any>;
@@ -26,6 +32,8 @@ export interface CodexNativeApiServerOptions {
   defaultLocale?: string | null;
   requestTitlePrefix?: string | null;
   maxBodyBytes?: number;
+  continuationRegistry?: CodexNativeApiContinuationRegistry;
+  continuationTtlMs?: number;
   now?: () => number;
   createResponseId?: () => string;
 }
@@ -55,6 +63,8 @@ export class CodexNativeApiServer {
 
   private readonly maxBodyBytes: number;
 
+  private readonly continuationRegistry: CodexNativeApiContinuationRegistry;
+
   private readonly now: () => number;
 
   private readonly createResponseId: () => string;
@@ -74,6 +84,8 @@ export class CodexNativeApiServer {
     defaultLocale = null,
     requestTitlePrefix = DEFAULT_TITLE_PREFIX,
     maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
+    continuationRegistry = null,
+    continuationTtlMs,
     now = () => Date.now(),
     createResponseId = () => `resp_${crypto.randomUUID()}`,
   }: CodexNativeApiServerOptions) {
@@ -93,6 +105,10 @@ export class CodexNativeApiServer {
       ? Number(maxBodyBytes)
       : DEFAULT_MAX_BODY_BYTES;
     this.now = now;
+    this.continuationRegistry = continuationRegistry ?? new InMemoryCodexNativeApiContinuationRegistry({
+      now,
+      ttlMs: continuationTtlMs,
+    });
     this.createResponseId = createResponseId;
     this.server = null;
     this.startedUrl = null;
@@ -262,17 +278,7 @@ export class CodexNativeApiServer {
       });
       return;
     }
-    const previousResponseId = normalizeString(requestBody.previous_response_id);
-    if (previousResponseId) {
-      writeJson(response, 400, {
-        error: {
-          message: 'previous_response_id is not supported until the continuation registry lands.',
-          type: 'invalid_request_error',
-          code: 'continuation_not_supported',
-        },
-      });
-      return;
-    }
+    const previousResponseId = normalizeString(requestBody.previous_response_id) || null;
     const prompt = buildPromptFromResponsesRequest(requestBody);
     if (!prompt) {
       writeJson(response, 400, {
@@ -283,6 +289,21 @@ export class CodexNativeApiServer {
       });
       return;
     }
+    const continuationLookup = previousResponseId
+      ? this.continuationRegistry.lookup(previousResponseId)
+      : null;
+    if (previousResponseId && continuationLookup?.status !== 'found') {
+      const error = buildContinuationLookupError(previousResponseId, continuationLookup);
+      writeJson(response, error.status, {
+        error: {
+          message: error.message,
+          type: 'invalid_request_error',
+          code: error.code,
+        },
+      });
+      return;
+    }
+    const continuationEntry = continuationLookup?.entry ?? null;
     const context = await this.resolveRuntimeContext();
     const readiness = await this.runtime.checkReadiness({
       providerProfile: context.providerProfile,
@@ -303,48 +324,102 @@ export class CodexNativeApiServer {
       });
       return;
     }
+    if (continuationEntry) {
+      const affinityError = buildContinuationAffinityError({
+        continuation: continuationEntry,
+        providerProfile: context.providerProfile,
+        readiness,
+      });
+      if (affinityError) {
+        writeJson(response, affinityError.status, {
+          error: {
+            message: affinityError.message,
+            type: 'conflict_error',
+            code: affinityError.code,
+          },
+          native_runtime: buildRuntimeMetadata({
+            providerProfile: context.providerProfile,
+            readiness,
+            threadId: continuationEntry.nativeThreadId,
+            turnId: continuationEntry.nativeTurnId,
+            bridgeSessionId: continuationEntry.bridgeSession.id,
+          }),
+        });
+        return;
+      }
+    }
     const responseId = this.createResponseId();
-    const createdAt = Math.floor(this.now() / 1000);
+    const startedAt = this.now();
+    const createdAt = Math.floor(startedAt / 1000);
     const requestMetadata = normalizeRecord(requestBody.metadata);
-    const requestedModel = normalizeString(requestBody.model) || this.defaultModel;
+    const requestedModel = normalizeString(requestBody.model) || null;
+    const effectiveModel = requestedModel || continuationEntry?.model || this.defaultModel;
     const locale = normalizeNullableString(requestMetadata?.locale) || this.defaultLocale;
-    const requestedCwd = normalizeNullableString(requestMetadata?.cwd) || this.defaultCwd;
+    const requestedCwd = normalizeNullableString(requestMetadata?.cwd);
+    const effectiveCwd = continuationEntry ? continuationEntry.bridgeSession.cwd : (requestedCwd || this.defaultCwd);
     const reasoningEffort = normalizeNullableString(requestBody.reasoning?.effort);
     const serviceTier = normalizeNullableString(requestBody.service_tier);
 
     try {
-      const execution = await this.runtime.runIsolatedTurn({
-        providerProfile: context.providerProfile,
-        providerPlugin: context.providerPlugin,
-        cwd: requestedCwd,
-        title: deriveRequestTitle(this.requestTitlePrefix, prompt),
-        metadata: {
-          source: 'codex-native-api',
-          route: '/v1/responses',
-          responseId,
-          user: normalizeNullableString(requestBody.user),
-        },
-        model: requestedModel,
-        reasoningEffort,
-        serviceTier,
-        prepareTurn: (session) => ({
-          inputText: prompt,
-          locale,
+      const execution = continuationEntry
+        ? await this.runtime.continueIsolatedTurn({
+          providerProfile: context.providerProfile,
+          providerPlugin: context.providerPlugin,
+          bridgeSession: continuationEntry.bridgeSession,
+          model: effectiveModel,
+          reasoningEffort,
+          serviceTier,
+          prepareTurn: (session) => ({
+            inputText: prompt,
+            locale,
+            metadata: {
+              source: 'codex-native-api',
+              responseId,
+              previousResponseId,
+              requestMetadata: requestMetadata ?? {},
+            },
+            event: {
+              platform: 'codex-native-api',
+              externalScopeId: responseId,
+              text: prompt,
+              cwd: session.cwd,
+              locale,
+              attachments: [],
+            },
+          }),
+        })
+        : await this.runtime.runIsolatedTurn({
+          providerProfile: context.providerProfile,
+          providerPlugin: context.providerPlugin,
+          cwd: effectiveCwd,
+          title: deriveRequestTitle(this.requestTitlePrefix, prompt),
           metadata: {
             source: 'codex-native-api',
+            route: '/v1/responses',
             responseId,
-            requestMetadata: requestMetadata ?? {},
+            user: normalizeNullableString(requestBody.user),
           },
-          event: {
-            platform: 'codex-native-api',
-            externalScopeId: responseId,
-            text: prompt,
-            cwd: session.cwd,
+          model: effectiveModel,
+          reasoningEffort,
+          serviceTier,
+          prepareTurn: (session) => ({
+            inputText: prompt,
             locale,
-            attachments: [],
-          },
-        }),
-      });
+            metadata: {
+              source: 'codex-native-api',
+              responseId,
+              requestMetadata: requestMetadata ?? {},
+            },
+            event: {
+              platform: 'codex-native-api',
+              externalScopeId: responseId,
+              text: prompt,
+              cwd: session.cwd,
+              locale,
+              attachments: [],
+            },
+          }),
+        });
       const outputText = normalizeString(execution.result.outputText);
       const previewText = normalizeString(execution.result.previewText);
       const effectiveText = outputText || previewText;
@@ -364,11 +439,27 @@ export class CodexNativeApiServer {
         });
         return;
       }
+      if (previousResponseId) {
+        this.continuationRegistry.touch(previousResponseId);
+      }
+      this.continuationRegistry.store({
+        responseId,
+        previousResponseId,
+        providerProfileId: context.providerProfile.id,
+        bridgeSession: execution.session,
+        nativeThreadId: execution.result.threadId ?? execution.session.codexThreadId,
+        nativeTurnId: execution.result.turnId ?? null,
+        activeAccountId: readiness.accountIdentity?.accountId ?? null,
+        model: effectiveModel,
+        routeKind: 'responses',
+        startedAt,
+        lastUsedAt: startedAt,
+      });
       writeJson(response, 200, buildResponsesObject({
         request: requestBody,
         responseId,
         createdAt,
-        responseModel: requestedModel,
+        responseModel: effectiveModel,
         status: outputText ? 'completed' : 'incomplete',
         outputText: effectiveText,
         incompleteDetails: outputText ? null : {
@@ -449,6 +540,59 @@ export class CodexNativeApiServer {
       };
     }
   }
+}
+
+function buildContinuationLookupError(
+  previousResponseId: string,
+  lookup: CodexNativeApiContinuationLookupResult | null,
+): {
+  status: number;
+  message: string;
+  code: string;
+} {
+  if (lookup?.status === 'expired') {
+    return {
+      status: 410,
+      message: `previous_response_id has expired: ${previousResponseId}`,
+      code: 'continuation_expired',
+    };
+  }
+  return {
+    status: 404,
+    message: `Unknown previous_response_id: ${previousResponseId}`,
+    code: 'continuation_not_found',
+  };
+}
+
+function buildContinuationAffinityError({
+  continuation,
+  providerProfile,
+  readiness,
+}: {
+  continuation: CodexNativeApiContinuationEntry;
+  providerProfile: ProviderProfile;
+  readiness: CodexNativeRuntimeReadiness;
+}): {
+  status: number;
+  message: string;
+  code: string;
+} | null {
+  if (continuation.providerProfileId !== providerProfile.id) {
+    return {
+      status: 409,
+      message: `previous_response_id is bound to provider profile ${continuation.providerProfileId}, not ${providerProfile.id}.`,
+      code: 'continuation_provider_mismatch',
+    };
+  }
+  const currentAccountId = normalizeNullableString(readiness.accountIdentity?.accountId);
+  if (continuation.activeAccountId && continuation.activeAccountId !== currentAccountId) {
+    return {
+      status: 409,
+      message: `previous_response_id is bound to native account ${continuation.activeAccountId}, but current native account is ${currentAccountId ?? 'unknown'}.`,
+      code: 'continuation_account_mismatch',
+    };
+  }
+  return null;
 }
 
 function buildPromptFromResponsesRequest(request: JsonRecord): string {

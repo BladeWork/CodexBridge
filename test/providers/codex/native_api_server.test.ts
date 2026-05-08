@@ -181,7 +181,116 @@ test('CodexNativeApiServer routes /v1/responses through isolated native runtime 
   }
 });
 
-test('CodexNativeApiServer rejects continuation and streaming requests before runtime execution', async () => {
+test('CodexNativeApiServer continues the same isolated native thread via previous_response_id', async () => {
+  let now = 500_000;
+  let nextResponseId = 'resp_native_api_1';
+  const calls: Array<{ kind: string; payload: any }> = [];
+  const runtime = new CodexNativeRuntime({
+    now: () => now,
+    createSessionId: () => 'session-native-api-1',
+    readAccountIdentity: () => ({
+      email: 'native@example.com',
+      name: 'Native Runtime',
+      authMode: 'chatgpt',
+      accountId: 'acc_native',
+      plan: 'plus',
+      authPath: '/tmp/auth.json',
+    }),
+  });
+  const providerPlugin = {
+    async listModels() {
+      calls.push({ kind: 'listModels', payload: null });
+      return [{
+        id: 'gpt-5.5',
+        model: 'gpt-5.5',
+        displayName: 'GPT-5.5',
+        description: 'Newest coding model.',
+        isDefault: true,
+        supportedReasoningEfforts: ['medium', 'high'],
+        defaultReasoningEffort: 'medium',
+      }];
+    },
+    async startThread(params: any) {
+      calls.push({ kind: 'startThread', payload: params });
+      return {
+        threadId: 'thread-native-api-1',
+        cwd: params.cwd,
+        title: params.title,
+      };
+    },
+    async startTurn(params: any) {
+      calls.push({ kind: 'startTurn', payload: params });
+      return {
+        outputText: params.event.externalScopeId === 'resp_native_api_1'
+          ? 'initial answer'
+          : 'follow-up answer',
+        previewText: '',
+        threadId: params.bridgeSession.codexThreadId,
+        turnId: params.event.externalScopeId === 'resp_native_api_1'
+          ? 'turn-native-api-1'
+          : 'turn-native-api-2',
+      };
+    },
+  } as any;
+  const server = new CodexNativeApiServer({
+    runtime,
+    resolveRuntimeContext: () => ({
+      providerProfile: makeProfile(),
+      providerPlugin,
+    }),
+    defaultLocale: 'en-US',
+    now: () => now,
+    createResponseId: () => nextResponseId,
+  });
+  await server.start();
+  try {
+    const initial = await fetch(`${server.baseUrl}/v1/responses`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-5.5',
+        input: 'First request',
+      }),
+    });
+    const initialBody = await initial.json() as any;
+    assert.equal(initial.status, 200);
+    assert.equal(initialBody.id, 'resp_native_api_1');
+    assert.equal(initialBody.output[0].content[0].text, 'initial answer');
+
+    now = 501_000;
+    nextResponseId = 'resp_native_api_2';
+    const followup = await fetch(`${server.baseUrl}/v1/responses`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        previous_response_id: 'resp_native_api_1',
+        model: 'gpt-5.5',
+        input: 'Second request',
+      }),
+    });
+    const followupBody = await followup.json() as any;
+    assert.equal(followup.status, 200);
+    assert.equal(followupBody.id, 'resp_native_api_2');
+    assert.equal(followupBody.previous_response_id, 'resp_native_api_1');
+    assert.equal(followupBody.output[0].content[0].text, 'follow-up answer');
+    assert.equal(followupBody.native_runtime.thread_id, 'thread-native-api-1');
+    assert.equal(followupBody.native_runtime.bridge_session_id, 'session-native-api-1');
+
+    const startThreadCalls = calls.filter((entry) => entry.kind === 'startThread');
+    const startTurnCalls = calls.filter((entry) => entry.kind === 'startTurn');
+    assert.equal(startThreadCalls.length, 1);
+    assert.equal(startTurnCalls.length, 2);
+    assert.equal(startTurnCalls[0]?.payload.bridgeSession.id, 'session-native-api-1');
+    assert.equal(startTurnCalls[1]?.payload.bridgeSession.id, 'session-native-api-1');
+    assert.equal(startTurnCalls[1]?.payload.bridgeSession.codexThreadId, 'thread-native-api-1');
+    assert.equal(startTurnCalls[1]?.payload.sessionSettings.model, 'gpt-5.5');
+    assert.equal(startTurnCalls[1]?.payload.event.externalScopeId, 'resp_native_api_2');
+  } finally {
+    await server.stop();
+  }
+});
+
+test('CodexNativeApiServer rejects unknown continuation ids and streaming requests before runtime execution', async () => {
   let resolverCalls = 0;
   const server = new CodexNativeApiServer({
     resolveRuntimeContext: () => {
@@ -200,8 +309,8 @@ test('CodexNativeApiServer rejects continuation and streaming requests before ru
       }),
     });
     const continuationBody = await continuationResponse.json() as any;
-    assert.equal(continuationResponse.status, 400);
-    assert.equal(continuationBody.error.code, 'continuation_not_supported');
+    assert.equal(continuationResponse.status, 404);
+    assert.equal(continuationBody.error.code, 'continuation_not_found');
 
     const streamingResponse = await fetch(`${server.baseUrl}/v1/responses`, {
       method: 'POST',
@@ -215,6 +324,90 @@ test('CodexNativeApiServer rejects continuation and streaming requests before ru
     assert.equal(streamingResponse.status, 400);
     assert.match(streamingBody.error.message, /Streaming is not implemented/);
     assert.equal(resolverCalls, 0);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('CodexNativeApiServer rejects continuation when the active native account changed', async () => {
+  let currentAccountId = 'acc_native_1';
+  let nextResponseId = 'resp_native_api_1';
+  const calls: Array<{ kind: string; payload: any }> = [];
+  const runtime = new CodexNativeRuntime({
+    createSessionId: () => 'session-native-api-1',
+    readAccountIdentity: () => ({
+      email: 'native@example.com',
+      name: 'Native Runtime',
+      authMode: 'chatgpt',
+      accountId: currentAccountId,
+      plan: 'plus',
+      authPath: '/tmp/auth.json',
+    }),
+  });
+  const providerPlugin = {
+    async listModels() {
+      return [{
+        id: 'gpt-5.5',
+        model: 'gpt-5.5',
+        displayName: 'GPT-5.5',
+        description: 'Newest coding model.',
+        isDefault: true,
+        supportedReasoningEfforts: ['medium'],
+        defaultReasoningEffort: 'medium',
+      }];
+    },
+    async startThread(params: any) {
+      calls.push({ kind: 'startThread', payload: params });
+      return {
+        threadId: 'thread-native-api-1',
+        cwd: params.cwd,
+        title: params.title,
+      };
+    },
+    async startTurn(params: any) {
+      calls.push({ kind: 'startTurn', payload: params });
+      return {
+        outputText: 'native answer',
+        previewText: '',
+        threadId: params.bridgeSession.codexThreadId,
+        turnId: 'turn-native-api-1',
+      };
+    },
+  } as any;
+  const server = new CodexNativeApiServer({
+    runtime,
+    resolveRuntimeContext: () => ({
+      providerProfile: makeProfile(),
+      providerPlugin,
+    }),
+    createResponseId: () => nextResponseId,
+  });
+  await server.start();
+  try {
+    const initial = await fetch(`${server.baseUrl}/v1/responses`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        input: 'First request',
+      }),
+    });
+    assert.equal(initial.status, 200);
+
+    currentAccountId = 'acc_native_2';
+    nextResponseId = 'resp_native_api_2';
+    const followup = await fetch(`${server.baseUrl}/v1/responses`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        previous_response_id: 'resp_native_api_1',
+        input: 'Second request',
+      }),
+    });
+    const followupBody = await followup.json() as any;
+    assert.equal(followup.status, 409);
+    assert.equal(followupBody.error.code, 'continuation_account_mismatch');
+    assert.match(followupBody.error.message, /acc_native_1/);
+    assert.equal(calls.filter((entry) => entry.kind === 'startTurn').length, 1);
   } finally {
     await server.stop();
   }

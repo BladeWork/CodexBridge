@@ -33,6 +33,8 @@ export interface CodexNativeApiServiceOptions {
   defaultLocale?: CodexNativeApiServerOptions['defaultLocale'];
   requestTitlePrefix?: CodexNativeApiServerOptions['requestTitlePrefix'];
   maxBodyBytes?: CodexNativeApiServerOptions['maxBodyBytes'];
+  continuationRegistry?: CodexNativeApiServerOptions['continuationRegistry'];
+  continuationTtlMs?: CodexNativeApiServerOptions['continuationTtlMs'];
   now?: CodexNativeApiServerOptions['now'];
   createResponseId?: CodexNativeApiServerOptions['createResponseId'];
 }
@@ -75,6 +77,8 @@ export class CodexNativeApiService {
     defaultLocale,
     requestTitlePrefix,
     maxBodyBytes,
+    continuationRegistry,
+    continuationTtlMs,
     now,
     createResponseId,
   }: CodexNativeApiServiceOptions) {
@@ -104,6 +108,8 @@ export class CodexNativeApiService {
       defaultLocale,
       requestTitlePrefix,
       maxBodyBytes,
+      continuationRegistry,
+      continuationTtlMs,
       now,
       createResponseId,
     });

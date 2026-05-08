@@ -86,6 +86,67 @@ test('CodexNativeRuntime runIsolatedTurn reuses one ephemeral substrate with rea
   assert.equal(calls[1]?.payload.inputText, 'cwd=/tmp/runtime');
 });
 
+test('CodexNativeRuntime continueIsolatedTurn reuses an existing isolated bridge session', async () => {
+  const calls: Array<{ kind: string; payload: any }> = [];
+  const runtime = new CodexNativeRuntime({
+    now: () => 9876543210,
+  });
+  const providerPlugin = {
+    async startThread() {
+      calls.push({ kind: 'startThread', payload: null });
+      throw new Error('should not create a new thread');
+    },
+    async startTurn(params: any) {
+      calls.push({ kind: 'startTurn', payload: params });
+      return {
+        outputText: 'continued',
+        previewText: '',
+        threadId: params.bridgeSession.codexThreadId,
+        turnId: 'turn-native-continued-1',
+      };
+    },
+  } as any;
+
+  const execution = await runtime.continueIsolatedTurn({
+    providerProfile: makeProfile(),
+    providerPlugin,
+    bridgeSession: {
+      id: 'session-native-existing',
+      providerProfileId: 'openai-default',
+      codexThreadId: 'thread-native-existing',
+      cwd: '/tmp/existing-session',
+      title: 'Existing Native Session',
+      createdAt: 10,
+      updatedAt: 20,
+    },
+    model: 'gpt-5.5',
+    reasoningEffort: 'medium',
+    serviceTier: 'default',
+    prepareTurn: (session) => ({
+      inputText: `continue ${session.codexThreadId}`,
+      locale: 'en-US',
+      event: {
+        platform: 'codex-native-api',
+        externalScopeId: 'resp_existing',
+        text: `continue ${session.codexThreadId}`,
+        cwd: session.cwd,
+        locale: 'en-US',
+        attachments: [],
+      },
+    }),
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.kind, 'startTurn');
+  assert.equal(calls[0]?.payload.bridgeSession.id, 'session-native-existing');
+  assert.equal(calls[0]?.payload.bridgeSession.codexThreadId, 'thread-native-existing');
+  assert.equal(calls[0]?.payload.sessionSettings.model, 'gpt-5.5');
+  assert.equal(calls[0]?.payload.inputText, 'continue thread-native-existing');
+  assert.equal(execution.session.id, 'session-native-existing');
+  assert.equal(execution.session.updatedAt, 9876543210);
+  assert.equal(execution.result.turnId, 'turn-native-continued-1');
+});
+
 test('CodexNativeRuntime checkReadiness reports account identity and model probe status', async () => {
   const runtime = new CodexNativeRuntime({
     now: () => 222,
